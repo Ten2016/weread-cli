@@ -1,0 +1,14 @@
+{
+  "name": "weread-terminal-local",
+  "version": "0.1.0",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "description": "本地微信读书终端阅读器",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node cli.js", "check": "node --check cli.js && node --check session.js && node --check books.js && node --check capture.js && node --check terminal.js && node --check progress.js && node --check cache.js" },
+  "dependencies": {
+    "playwright-core": "1.65.0",
+    "string-width": "8.3.0"
+  }
+}
