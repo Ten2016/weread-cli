@@ -1,6 +1,6 @@
 import { Session } from './session.js';
 import { Books } from './books.js';
-import { Terminal, wrapLines, readingText } from './terminal.js';
+import { Terminal, wrapLines, readingContent } from './terminal.js';
 import { saveProgress } from './progress.js';
 
 const session = new Session();
@@ -36,13 +36,16 @@ async function read(book) {
   let lineIndex = 0;
   let wrappedWidth = 0;
   let text = '';
+  let styles = [];
   let bookmark = null;
   let focus = 'body';
   let selectedChapter = reading.index;
   let catalogOffset = 0;
   const updateText = () => {
     lines = [];
-    text = readingText(reading.blocks) || (reading.message
+    const content = readingContent(reading.blocks);
+    styles = content.styles;
+    text = content.text || (reading.message
       ? '[本章正文未加载，可继续翻页或切换到目录选择章节。]'
       : '[网页已返回本目录项，但没有可提取文字，可能为图片扉页。可继续翻页。]');
   };
@@ -69,7 +72,7 @@ async function read(book) {
         catalogOffset = Math.max(0, Math.min(catalogOffset, selectedChapter, reading.chapters.length - layout.height));
         if (selectedChapter >= catalogOffset + layout.height) catalogOffset = selectedChapter - layout.height + 1;
         if (!lines.length || wrappedWidth !== layout.width) {
-          lines = wrapLines(text, layout.width);
+          lines = wrapLines(text, layout.width, styles);
           wrappedWidth = layout.width;
         }
         const lastLine = Math.max(0, lines.length - layout.height);
@@ -78,7 +81,7 @@ async function read(book) {
         const chapter = reading.chapters[reading.index];
         if (chapter && reading.blocks.length && !reading.message) bookmark = { chapterUid: chapter.uid };
         terminal.screen(terminal.showCatalog ? readingTitle(reading) : null,
-          terminal.readingLines(reading.chapters, reading.index, lines.slice(lineIndex, lineIndex + layout.height).map(line => line.text),
+          terminal.readingLines(reading.chapters, reading.index, lines.slice(lineIndex, lineIndex + layout.height),
             terminal.showCatalog
               ? `${chapter?.title || '正文'} · ${reading.index + 1}/${reading.chapters.length} 章 · ${lineIndex + 1}–${Math.min(lines.length, lineIndex + layout.height)}/${lines.length} 行`
               : chapter?.title || '正文', { focus, selected: selectedChapter, offset: catalogOffset }),
@@ -138,10 +141,21 @@ async function read(book) {
       }
     }
   } finally {
+    const errors = [];
     try {
       await saveProgress(userId, book.id, bookmark);
     } catch (error) {
-      const message = `本地阅读进度保存失败：${error.message}`;
+      errors.push(`本地阅读进度保存失败：${error.message}`);
+    }
+    if (bookmark) {
+      try {
+        await books.syncOnExit(bookmark.chapterUid);
+      } catch (error) {
+        errors.push(`网页章节同步失败${errors.length ? '' : '，本地进度已保存'}：${error.message.split('\n')[0]}`);
+      }
+    }
+    if (errors.length) {
+      const message = errors.join('\n');
       if (terminal.running) throw new Error(message);
       console.error(message);
     }

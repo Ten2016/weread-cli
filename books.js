@@ -75,15 +75,20 @@ export class Books {
 
   async closeReader() {
     await this.syncTask;
-    if (this.current && this.reader && !this.reader.isClosed()) {
-      try { await this.refreshCloud(); } catch { /* 云端不可用时保留已保存的本地章节。 */ }
-    }
     await this.cache.pending.catch(() => {});
     const page = this.reader;
     this.reader = null;
     this.current = null;
     this.web = null;
     if (page && !page.isClosed()) await page.close();
+  }
+
+  async syncOnExit(uid) {
+    await this.syncTask;
+    await this.session.ready;
+    if (!this.current || !this.session.authenticated || this.current.userId !== this.session.userId) return;
+    await this.ensureWeb(this.current.book);
+    await this.webChapter(uid, { readContent: false });
   }
 
   async cached() {
@@ -176,14 +181,14 @@ export class Books {
     return capture.content.blocks;
   }
 
-  async webChapter(uid) {
+  async webChapter(uid, { readContent = true } = {}) {
     const index = this.web.chapters.findIndex(chapter => String(chapter.uid) === String(uid));
     if (index < 0) throw new Error('网页目录中未找到当前章节，请刷新书籍列表。');
     const catalog = this.reader.locator('.readerCatalog_list_item');
     const selected = await catalog.evaluateAll(items => items.findIndex(item => item.classList.contains('readerCatalog_list_item_selected')));
     if (selected === index) {
       this.web.index = index;
-      return this.webContent();
+      return readContent ? this.webContent() : undefined;
     }
     if (!await catalog.first().isVisible()) {
       await this.reader.getByRole('button', { name: '目录', exact: true }).first().click();
@@ -207,7 +212,7 @@ export class Books {
       throw new Error(`已点击网页目录，但等待选中目标章节失败：${error.message.split('\n')[0]}`);
     }
     this.web.index = index;
-    return this.webContent();
+    return readContent ? this.webContent() : undefined;
   }
 
   async chapter(index) {
@@ -243,32 +248,11 @@ export class Books {
         this.syncUid = null;
         await this.ensureWeb(this.current.book);
         await this.webChapter(target);
-        await this.refreshCloud();
         if (this.current.warning?.startsWith('本地阅读不受影响，网页章节未能更新：')) this.current.warning = '';
       }
     })().catch(error => {
       this.syncUid = null;
       if (this.current) this.current.warning = `本地阅读不受影响，网页章节未能更新：${error.message.split('\n')[0]}`;
     }).finally(() => { this.syncTask = null; });
-  }
-
-  async refreshCloud() {
-    if (!this.current || !this.session.authenticated || !this.session.context) return;
-    const response = await this.session.context.request.get(new URL(this.current.book.url, BASE).href, { timeout: 5000 });
-    try {
-      if (!response.ok()) return;
-      const state = initialState(await response.text());
-      if (!state.user?.vid) {
-        this.session.authenticated = false;
-        return;
-      }
-      const progress = state.reader?.progress?.book;
-      if (progress) {
-        this.current.cloud = { chapterUid: progress.chapterUid, progress: progress.progress, updateTime: progress.updateTime };
-        await this.cache.put(this.current);
-      }
-    } finally {
-      await response.dispose();
-    }
   }
 }

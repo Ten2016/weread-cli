@@ -1,10 +1,14 @@
 {
   "name": "weread-terminal-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "本地微信读书终端阅读器",
+  "description": "微信读书终端阅读器（WeRead Terminal Reader / TUI）：扫码登录、正文阅读、键盘翻页、隐藏模式、离线缓存与续读，工作间隙摸鱼读书。",
+  "keywords": ["weread", "wechat-reading", "terminal-reader", "tui", "cli", "ebook-reader", "reading", "nodejs", "微信读书", "终端阅读器", "摸鱼"],
+  "repository": { "type": "git", "url": "https://github.com/Ten2016/weread-cli.git" },
+  "homepage": "https://github.com/Ten2016/weread-cli#readme",
+  "bugs": { "url": "https://github.com/Ten2016/weread-cli/issues" },
   "engines": { "node": ">=20" },
   "scripts": { "start": "node cli.js", "check": "node --check cli.js && node --check session.js && node --check books.js && node --check capture.js && node --check terminal.js && node --check progress.js && node --check cache.js" },
   "dependencies": {

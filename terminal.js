@@ -4,7 +4,43 @@ import stringWidth from 'string-width';
 
 const segments = new Intl.Segmenter('zh', { granularity: 'grapheme' });
 export const clean = value => String(value ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
-export const readingText = blocks => clean(blocks.map(block => block.text).join('\n\n')).replace(/\t/g, '    ');
+const contentColors = { heading: '197;174;235', image: '166;193;155', caption: '211;183;137', table: '154;187;213' };
+
+export function readingContent(blocks) {
+  let text = '';
+  const styles = [];
+  for (const [index, block] of blocks.entries()) {
+    if (index) text += '\n\n';
+    const value = clean(block.text).replace(/\t/g, '    ');
+    const start = text.length;
+    let cursor = 0;
+    const addStyle = (from, to, type) => {
+      if (to > from && Object.hasOwn(contentColors, type)) styles.push({ start: start + from, end: start + to, type });
+    };
+    for (const match of value.matchAll(/\[图片(?:：[^\]\n]*)?\]/g)) {
+      if (block.type === 'code') break;
+      addStyle(cursor, match.index, block.type);
+      cursor = match.index + match[0].length;
+      addStyle(match.index, cursor, 'image');
+    }
+    addStyle(cursor, value.length, block.type);
+    text += value;
+  }
+  return { text, styles };
+}
+
+function renderContent(content) {
+  if (typeof content === 'string') return clean(content);
+  let result = '';
+  let cursor = 0;
+  for (const style of content.styles || []) {
+    result += clean(content.text.slice(cursor, style.start));
+    const value = clean(content.text.slice(style.start, style.end));
+    result += stdout.isTTY ? `\x1b[38;2;${contentColors[style.type]}m${value}\x1b[39m` : value;
+    cursor = style.end;
+  }
+  return result + clean(content.text.slice(cursor));
+}
 
 function fitLine(value, width) {
   const text = clean(value).replace(/[\n\t]/g, ' ');
@@ -20,7 +56,7 @@ function fitLine(value, width) {
   return result + '…' + ' '.repeat(Math.max(0, width - columns - 1));
 }
 
-export function wrapLines(text, width) {
+export function wrapLines(text, width, styles = []) {
   const lines = [];
   let line = '';
   let columns = 0;
@@ -44,6 +80,16 @@ export function wrapLines(text, width) {
     columns += size;
   }
   if (line || !lines.length) lines.push({ text: line, start });
+  let styleIndex = 0;
+  for (const line of lines) {
+    const end = line.start + line.text.length;
+    while (styleIndex < styles.length && styles[styleIndex].end <= line.start) styleIndex++;
+    line.styles = [];
+    for (let index = styleIndex; index < styles.length && styles[index].start < end; index++) {
+      const style = styles[index];
+      line.styles.push({ start: Math.max(0, style.start - line.start), end: Math.min(end, style.end) - line.start, type: style.type });
+    }
+  }
   return lines;
 }
 
@@ -65,7 +111,7 @@ export class Terminal {
   }
 
   get width() { return Math.max(10, Math.min(160, (stdout.columns || 80) - 2)); }
-  get height() { return Math.max(3, Math.min(34, (stdout.rows || 28) - 9)); }
+  get height() { return Math.max(3, Math.min(51, (stdout.rows || 28) - 9)); }
   get listSize() { return Math.max(3, Math.min(15, this.height)); }
 
   get readingLayout() {
@@ -75,11 +121,12 @@ export class Terminal {
 
   readingLines(chapters, index, body, heading = '正文', { focus = 'body', selected = index, offset = 0 } = {}) {
     const { sidebar, height, width } = this.readingLayout;
-    if (!sidebar) return [fitLine(heading, width), ...body];
+    const title = { text: fitLine(heading, width), styles: [{ start: 0, end: heading.length, type: 'heading' }] };
+    if (!sidebar) return [title, ...body];
     const start = offset;
     const end = Math.min(chapters.length, start + height);
     const readingRow = (label, content) => ({ catalog: fitLine(label, sidebar), body: content, focused: focus === 'catalog' });
-    const lines = [readingRow(`目录 ${start + 1}–${end}/${chapters.length}`, fitLine(heading, width))];
+    const lines = [readingRow(`目录 ${start + 1}–${end}/${chapters.length}`, title)];
     for (let row = 0; row < height; row++) {
       const chapter = chapters[start + row];
       const indent = chapter ? '  '.repeat(Math.max(0, Math.min(3, (Number(chapter.level) || 1) - 1))) : '';
@@ -93,11 +140,11 @@ export class Terminal {
     if (stdout.isTTY) stdout.write('\x1b[2J\x1b[H');
     if (title !== null) stdout.write(`${clean(title)}\n${'─'.repeat(Math.min(this.width, 70))}\n`);
     const rendered = lines.map(line => {
-      if (typeof line === 'string') return clean(line);
+      if (typeof line === 'string' || !Object.hasOwn(line, 'catalog')) return renderContent(line);
       const catalog = clean(line.catalog);
       const highlighted = stdout.isTTY && line.focused
         ? `\x1b[48;2;40;62;44m${catalog}\x1b[49m` : catalog;
-      return `${highlighted} │ ${clean(line.body)}`;
+      return `${highlighted} │ ${renderContent(line.body)}`;
     });
     stdout.write(`${rendered.join('\n')}\n\n${clean(help)}\n`);
     if (message) stdout.write(`${clean(message)}\n`);

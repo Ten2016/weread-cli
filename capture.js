@@ -24,18 +24,22 @@ export function installCapture() {
         try {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           doc.querySelectorAll('script,style,noscript,svg').forEach(node => node.remove());
-          const selector = 'h1,h2,h3,h4,h5,h6,p,pre,li,blockquote,table,img';
+          const selector = 'h1,h2,h3,h4,h5,h6,p,pre,li,blockquote,table,img,figcaption';
           const blocks = Array.from(doc.body.querySelectorAll(selector))
             .filter(node => !node.parentElement.closest(selector))
-            .map(node => {
+            .flatMap(node => {
               if (node.tagName === 'PRE') return { type: 'code', text: node.textContent.replace(/^\n|\n$/g, '') };
               if (node.tagName === 'TABLE') {
-                return { type: 'text', text: Array.from(node.rows).map(row =>
+                const table = { type: 'table', text: Array.from(node.rows).map(row =>
                   Array.from(row.cells).map(cell => text(cell).replace(/\s+/g, ' ').trim()).join(' | ')
                 ).join('\n') };
+                return node.caption ? [{ type: 'caption', text: text(node.caption).trim() }, table] : table;
               }
               const value = text(node).replace(/[\t\r ]+/g, ' ').trim();
-              return { type: 'text', text: `${node.tagName === 'LI' ? '• ' : ''}${value}` };
+              const type = /^H[1-6]$/.test(node.tagName) ? 'heading'
+                : node.tagName === 'FIGCAPTION' ? 'caption'
+                  : node.tagName === 'IMG' ? 'image' : 'text';
+              return { type, text: `${node.tagName === 'LI' ? '• ' : ''}${value}` };
             })
             .filter(block => block.text.trim());
           if (!blocks.length && doc.body.textContent.trim()) {
