@@ -20,7 +20,7 @@ function fitLine(value, width) {
   return result + '…' + ' '.repeat(Math.max(0, width - columns - 1));
 }
 
-export function paginate(text, width, height) {
+export function wrapLines(text, width) {
   const lines = [];
   let line = '';
   let columns = 0;
@@ -44,11 +44,7 @@ export function paginate(text, width, height) {
     columns += size;
   }
   if (line || !lines.length) lines.push({ text: line, start });
-  const pages = [];
-  for (let i = 0; i < lines.length; i += height) {
-    pages.push({ start: lines[i].start, lines: lines.slice(i, i + height).map(item => item.text) });
-  }
-  return pages;
+  return lines;
 }
 
 export class Terminal {
@@ -77,17 +73,18 @@ export class Terminal {
     return { sidebar, width: this.width - (sidebar ? sidebar + 3 : 0), height: this.height - 1 };
   }
 
-  readingLines(chapters, index, body, heading = '正文') {
+  readingLines(chapters, index, body, heading = '正文', { focus = 'body', selected = index, offset = 0 } = {}) {
     const { sidebar, height, width } = this.readingLayout;
     if (!sidebar) return [fitLine(heading, width), ...body];
-    const start = Math.max(0, Math.min(index - Math.floor(height / 2), chapters.length - height));
+    const start = offset;
     const end = Math.min(chapters.length, start + height);
-    const lines = [`${fitLine(`目录 ${start + 1}–${end}/${chapters.length}`, sidebar)} │ ${fitLine(heading, width)}`];
+    const readingRow = (label, content) => ({ catalog: fitLine(label, sidebar), body: content, focused: focus === 'catalog' });
+    const lines = [readingRow(`目录 ${start + 1}–${end}/${chapters.length}`, fitLine(heading, width))];
     for (let row = 0; row < height; row++) {
       const chapter = chapters[start + row];
       const indent = chapter ? '  '.repeat(Math.max(0, Math.min(3, (Number(chapter.level) || 1) - 1))) : '';
-      const label = chapter ? `${start + row === index ? '▶ ' : '  '}${start + row + 1}. ${indent}${chapter.title}` : '';
-      lines.push(`${fitLine(label, sidebar)} │ ${body[row] || ''}`);
+      const label = chapter ? `${start + row === selected ? '▶' : ' '}${start + row === index ? '●' : ' '} ${start + row + 1}. ${indent}${chapter.title}` : '';
+      lines.push(readingRow(label, body[row] || ''));
     }
     return lines;
   }
@@ -95,22 +92,34 @@ export class Terminal {
   screen(title, lines, help, message = '') {
     if (stdout.isTTY) stdout.write('\x1b[2J\x1b[H');
     if (title !== null) stdout.write(`${clean(title)}\n${'─'.repeat(Math.min(this.width, 70))}\n`);
-    stdout.write(`${lines.map(clean).join('\n')}\n\n${clean(help)}\n`);
+    const rendered = lines.map(line => {
+      if (typeof line === 'string') return clean(line);
+      const catalog = clean(line.catalog);
+      const highlighted = stdout.isTTY && line.focused
+        ? `\x1b[48;2;40;62;44m${catalog}\x1b[49m` : catalog;
+      return `${highlighted} │ ${clean(line.body)}`;
+    });
+    stdout.write(`${rendered.join('\n')}\n\n${clean(help)}\n`);
     if (message) stdout.write(`${clean(message)}\n`);
   }
 
-  async ask(render, { pageKeys = false } = {}) {
+  async ask(render, { onArrow = null } = {}) {
     if (!this.running) return 'q';
     this.redraw = render;
     render();
     this.waiting = true;
+    const history = this.rl.history;
+    // 阅读时暂停命令历史，避免上下键先被 readline 用于回填命令。
+    if (onArrow) this.rl.history = [];
     const onKey = (_, key) => {
       if (!this.waiting || this.rl.line || !key || key.ctrl || key.meta || key.shift) return;
-      if (key.name !== 'left' && key.name !== 'right') return;
+      if (!['left', 'right', 'up', 'down'].includes(key.name)) return;
+      const command = onArrow(key.name);
+      if (!command) return;
       this.waiting = false;
-      this.rl.write(key.name === 'right' ? 'n\n' : '←\n');
+      this.rl.write(`${command}\n`);
     };
-    if (pageKeys && stdin.isTTY) stdin.on('keypress', onKey);
+    if (onArrow && stdin.isTTY) stdin.on('keypress', onKey);
     try {
       const answer = await this.rl.question('> ', { signal: this.abort.signal });
       return answer.trim();
@@ -118,7 +127,8 @@ export class Terminal {
       if (!this.running || error.name === 'AbortError' || error.code === 'ERR_USE_AFTER_CLOSE') return 'q';
       throw error;
     } finally {
-      if (pageKeys && stdin.isTTY) stdin.off('keypress', onKey);
+      if (onArrow && stdin.isTTY) stdin.off('keypress', onKey);
+      if (onArrow) this.rl.history = history;
       this.waiting = false;
       this.redraw = null;
     }

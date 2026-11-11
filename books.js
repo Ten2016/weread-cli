@@ -170,7 +170,7 @@ export class Books {
       if (/购买后|付费阅读|开通会员|去微信读书 App 阅读/.test(text)) {
         throw new Error(`${reason}；页面出现付费、会员或 App 阅读提示，请在微信读书确认阅读权限${loginError}。`);
       }
-      throw new Error(`${reason}${loginError}。可继续翻页或通过 c 选择其他章节。`);
+      throw new Error(`${reason}${loginError}。可继续翻页或切换到目录选择其他章节。`);
     }
     if (capture.error) throw new Error(`网页正文已到达，但文字提取失败：${capture.error}`);
     return capture.content.blocks;
