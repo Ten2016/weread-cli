@@ -51,7 +51,7 @@ WeRead CLI 是一个使用 Node.js 编写的轻量命令行阅读器。登录自
 下载或克隆本仓库，进入包含 `package.json` 的项目目录，执行：
 
 ```bash
-npm install --ignore-scripts
+npm ci --ignore-scripts
 npm start
 ```
 
@@ -181,6 +181,8 @@ npm run check
 该命令仅执行 `node --check`，不启动应用。当前没有自动化测试套件；语法检查不能替代登录、章节切换、离线阅读等实际验证。
 
 ## 参与贡献
+
+开发约定、验证场景和提交要求见 [贡献指南](CONTRIBUTING.md)。
 
 欢迎通过 GitHub Issues 反馈问题或提出功能建议，通过 Pull Request 提交修复。反馈问题时，请提供：
 
