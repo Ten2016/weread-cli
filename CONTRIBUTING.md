@@ -19,7 +19,7 @@ npm ci --ignore-scripts
 npm start
 ```
 
-项目直接运行 JavaScript 源码，无需构建。`cli.js` 负责交互，`terminal.js` 负责终端排版与输入，`books.js` 负责章节导航，`capture.js` 负责正文提取。
+项目直接运行 JavaScript 源码，无需构建。`cli.js` 负责菜单与列表，`reader.js` 负责阅读交互，`terminal.js` 负责终端排版与输入，`books.js` 负责章节导航，`capture.js` 负责正文提取；`storage.js` 提供本地文件写入。
 
 沿用 ES Modules、两空格缩进、单引号和分号，并遵循 `.editorconfig`。改动依赖时同步锁文件，避免无关重构和批量格式化。
 

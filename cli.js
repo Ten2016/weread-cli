@@ -1,17 +1,12 @@
 import { Session } from './session.js';
 import { Books } from './books.js';
-import { Terminal, wrapLines, readingContent } from './terminal.js';
-import { saveProgress } from './progress.js';
+import { Terminal } from './terminal.js';
+import { readBook } from './reader.js';
 
 const session = new Session();
 const books = new Books(session);
 const terminal = new Terminal();
 const loginLabel = () => session.authenticated ? '已登录' : '未登录';
-function readingTitle(reading) {
-  const percent = reading.cloud?.progress;
-  const progress = typeof percent === 'number' && Number.isFinite(percent) && percent >= 0 && percent <= 100 ? `${percent}%` : '进度未知';
-  return `《${reading.book.title}》 · ${progress} · ${loginLabel()} · ${reading.fromCache ? '使用缓存' : '未使用缓存'}`;
-}
 const stop = () => {
   terminal.close();
   if (!books.current) void session.close().catch(() => {});
@@ -19,158 +14,6 @@ const stop = () => {
 terminal.rl.on('SIGINT', stop);
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
-
-function quit(command) {
-  if (command !== 'q') return false;
-  terminal.running = false;
-  return true;
-}
-
-async function read(book) {
-  const startedAt = Date.now();
-  terminal.busy('正在加载书籍…');
-  let reading = await books.open(book);
-  const userId = reading.userId;
-  let position = 0;
-  let message = reading.message || '';
-  let showHelp = false;
-  let lines = [];
-  let lineIndex = 0;
-  let wrappedWidth = 0;
-  let text = '';
-  let styles = [];
-  let starts = [];
-  let bookmark = null;
-  let focus = 'body';
-  let selectedChapter = reading.index;
-  let catalogOffset = 0;
-  const updateText = () => {
-    lines = [];
-    const content = readingContent(reading.blocks);
-    styles = content.styles;
-    starts = content.starts;
-    text = content.text || (reading.message
-      ? '[本章正文未加载，可继续翻页或切换到目录选择章节。]'
-      : '[网页已返回本目录项，但没有可提取文字，可能为图片扉页。可继续翻页。]');
-  };
-  updateText();
-
-  async function changeChapter(index, nextPosition) {
-    terminal.busy('正在加载章节…');
-    try {
-      reading = await books.chapter(index);
-    } catch (error) {
-      reading = { ...reading, index, blocks: [], fromCache: false, message: error.message };
-    }
-    message = reading.message || '';
-    position = nextPosition;
-    selectedChapter = reading.index;
-    updateText();
-  }
-
-  function scrollBody(direction) {
-    const lastLine = Math.max(0, lines.length - terminal.readingLayout.height);
-    const target = Math.max(0, Math.min(lastLine, lineIndex + direction));
-    if (target === lineIndex) return;
-    position = lines[target].start;
-    message = '';
-    terminal.refresh();
-  }
-
-  try {
-    while (terminal.running) {
-      const command = await terminal.ask(() => {
-        const layout = terminal.readingLayout;
-        if (!layout.sidebar) focus = 'body';
-        catalogOffset = Math.max(0, Math.min(catalogOffset, selectedChapter, reading.chapters.length - layout.height));
-        if (selectedChapter >= catalogOffset + layout.height) catalogOffset = selectedChapter - layout.height + 1;
-        if (!lines.length || wrappedWidth !== layout.width) {
-          lines = wrapLines(text, layout.width, styles, starts);
-          wrappedWidth = layout.width;
-        }
-        const lastLine = Math.max(0, lines.length - layout.height);
-        lineIndex = Math.max(0, Math.min(lastLine, lines.findLastIndex(line => line.start <= position)));
-        if (!Number.isFinite(position)) position = lines[lineIndex].start;
-        const chapter = reading.chapters[reading.index];
-        if (chapter && reading.blocks.length && !reading.message) bookmark = { chapterUid: chapter.uid };
-        terminal.screen(terminal.showCatalog ? readingTitle(reading) : null,
-          terminal.readingLines(reading.chapters, reading.index, lines.slice(lineIndex, lineIndex + layout.height),
-            terminal.showCatalog
-              ? `${chapter?.title || '正文'} · ${reading.index + 1}/${reading.chapters.length} 章 · ${lineIndex + 1}–${Math.min(lines.length, lineIndex + layout.height)}/${lines.length} 行`
-              : chapter?.title || '正文', { focus, selected: selectedChapter, offset: catalogOffset }),
-          !terminal.showCatalog ? (showHelp ? '←/→ 翻页 ↑/↓ 滚动 回车 下页 h 目录 a 书架 Esc 返回 q 退出' : '← for agents · ? for shortcuts') : `${layout.sidebar
-            ? `← 目录 / → 正文 · ${focus === 'catalog' ? '↑/↓ 选章 · 回车 打开' : '↑/↓ 翻页 · 回车 下页'}`
-            : '←/→ 翻页 · ↑/↓ 滚动 · 回车 下页'} · h ${terminal.showCatalog ? '隐藏' : '显示'}目录 · a 加书架 · Esc 返回 · q 退出`, message || reading.warning || '', { startedAt });
-      }, {
-        onWheel: scrollBody,
-        onArrow: key => {
-          if (terminal.readingLayout.sidebar) {
-            if (key === 'left' || key === 'right') {
-              focus = key === 'left' ? 'catalog' : 'body';
-            } else if (focus === 'catalog') {
-              const target = Math.max(0, Math.min(reading.chapters.length - 1, selectedChapter + (key === 'down' ? 1 : -1)));
-              if (target === selectedChapter) return;
-              selectedChapter = target;
-            } else return key === 'down' ? '↓' : '↑';
-            message = '';
-            terminal.refresh();
-            return;
-          }
-          if (key === 'left' || key === 'right') return key === 'right' ? '↓' : '↑';
-          scrollBody(key === 'down' ? 1 : -1);
-        },
-      });
-      if (quit(command) || command === '\x1b') return;
-      message = '';
-      try {
-        if (command === 'h') {
-          terminal.showCatalog = !terminal.showCatalog;
-        } else if (command === '?') {
-          showHelp = !showHelp;
-        } else if (command === 'a') {
-          await books.add(book);
-          message = '已在书架中。';
-        } else if (command === '' && focus === 'catalog') {
-          await changeChapter(selectedChapter, 0);
-        } else if (focus === 'body' && ['', '↑', '↓'].includes(command)) {
-          const direction = command === '↑' ? -1 : 1;
-          const height = terminal.readingLayout.height;
-          const lastLine = Math.max(0, lines.length - height);
-          const target = Math.max(0, Math.min(lastLine, lineIndex + direction * height));
-          if (target !== lineIndex) position = lines[target].start;
-          else {
-            const next = reading.index + direction;
-            if (next < 0 || next >= reading.chapters.length) message = direction > 0 ? '已到全书末尾。' : '已到全书开头。';
-            else {
-              await changeChapter(next, direction > 0 ? 0 : Infinity);
-            }
-          }
-        } else message = '请输入底部提示中的操作。';
-      } catch (error) {
-        message = error.message;
-      }
-    }
-  } finally {
-    const errors = [];
-    try {
-      await saveProgress(userId, book.id, bookmark);
-    } catch (error) {
-      errors.push(`本地阅读进度保存失败：${error.message}`);
-    }
-    if (bookmark) {
-      try {
-        await books.syncOnExit(bookmark.chapterUid);
-      } catch (error) {
-        errors.push(`网页章节同步失败${errors.length ? '' : '，本地进度已保存'}：${error.message.split('\n')[0]}`);
-      }
-    }
-    if (errors.length) {
-      const message = errors.join('\n');
-      if (terminal.running) throw new Error(message);
-      console.error(message);
-    }
-  }
-}
 
 async function list(kind, keyword = '') {
   let items = [];
@@ -211,7 +54,7 @@ async function list(kind, keyword = '') {
         `${offset + i + 1}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`
       ) : ['暂无书籍。'],
       '编号 阅读 · a 编号 加书架 · n/p 翻页 · r 刷新 · Esc 返回 · q 退出', message));
-    if (quit(command) || command === '\x1b') return;
+    if (command === 'q' || command === '\x1b') return;
     message = '';
     try {
       if (command === 'r') await load(true);
@@ -230,7 +73,7 @@ async function list(kind, keyword = '') {
           message = '已在书架中。';
         } else {
           try {
-            await read(items[index]);
+            await readBook(items[index], books, terminal);
           } finally {
             await books.closeReader();
           }
@@ -249,7 +92,7 @@ try {
     const command = await terminal.ask(() => terminal.screen(`微信读书 · ${loginLabel()}`, [
       '1. 我的书架', '2. 猜你喜欢', '3. 搜索书籍', '4. 本地缓存',
     ], '1/2/3/4 进入 · login 手动扫码登录 · logout 退出登录 · q 退出程序', message));
-    if (quit(command)) break;
+    if (command === 'q') break;
     if (command === '\x1b') continue;
     message = '';
     try {
@@ -258,7 +101,7 @@ try {
       else if (command === '4') await list('cache');
       else if (command === '3') {
         const keyword = await terminal.ask(() => terminal.screen('搜索书籍', [], '输入关键词 · Esc 返回 · q 退出'));
-        if (quit(keyword)) break;
+        if (keyword === 'q') break;
         if (keyword && keyword !== '\x1b') await list('search', keyword);
       } else if (command === 'login') {
         terminal.busy('请扫码并在手机确认；检测成功后自动返回菜单，最长等待三分钟。等待期间无需输入命令。');

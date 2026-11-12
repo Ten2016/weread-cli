@@ -315,7 +315,7 @@ export class Terminal {
     // 阅读时暂停命令历史，避免上下键先被 readline 用于回填命令。
     if (onArrow) this.rl.history = [];
     const onKey = (_, key) => {
-      if (!this.waiting || !key || key.ctrl || key.meta || key.shift) return;
+      if (!this.waiting || !key) return;
       if (key.name === 'escape') {
         escaped = true;
         this.waiting = false;
@@ -324,6 +324,7 @@ export class Terminal {
         this.rl.write('\n');
         return;
       }
+      if (key.ctrl || key.meta || key.shift) return;
       if (!onArrow || this.rl.line || !['left', 'right', 'up', 'down'].includes(key.name)) return;
       const command = onArrow(key.name);
       if (!command) return;
@@ -335,7 +336,9 @@ export class Terminal {
     if (stdin.isTTY) this.input.on('keypress', onInput);
     try {
       const answer = await this.rl.question(this.inputBar ? '› ' : '> ', { signal: this.abort.signal });
-      return escaped ? '\x1b' : answer.trim();
+      const command = escaped ? '\x1b' : answer.trim();
+      if (command === 'q') this.running = false;
+      return command;
     } catch (error) {
       if (!this.running || error.name === 'AbortError' || error.code === 'ERR_USE_AFTER_CLOSE') return 'q';
       throw error;

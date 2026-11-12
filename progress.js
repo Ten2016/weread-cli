@@ -1,8 +1,8 @@
-import { mkdir, readFile, writeFile, rename, chmod } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { DATA, writeJson } from './storage.js';
 
-const DATA = fileURLToPath(new URL('./.data/', import.meta.url));
-const FILE = fileURLToPath(new URL('./.data/progress.json', import.meta.url));
+const FILE = join(DATA, 'progress.json');
 
 async function readAll() {
   try {
@@ -25,10 +25,5 @@ export async function saveProgress(userId, bookId, bookmark) {
   if (!userId || !bookmark) return;
   const all = await readAll();
   all[userId] = { ...all[userId], [bookId]: { chapterUid: bookmark.chapterUid, updatedAt: Date.now() } };
-  await mkdir(DATA, { recursive: true, mode: 0o700 });
-  await chmod(DATA, 0o700);
-  const temporary = `${FILE}.tmp`;
-  await writeFile(temporary, JSON.stringify(all), { mode: 0o600 });
-  await chmod(temporary, 0o600);
-  await rename(temporary, FILE);
+  await writeJson(FILE, all);
 }

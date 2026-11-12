@@ -10,7 +10,7 @@
   "homepage": "https://github.com/Ten2016/weread-cli#readme",
   "bugs": { "url": "https://github.com/Ten2016/weread-cli/issues" },
   "engines": { "node": ">=20" },
-  "scripts": { "start": "node cli.js", "check": "node --check cli.js && node --check session.js && node --check books.js && node --check capture.js && node --check terminal.js && node --check progress.js && node --check cache.js" },
+  "scripts": { "start": "node cli.js", "check": "node --check cli.js && node --check reader.js && node --check session.js && node --check books.js && node --check capture.js && node --check terminal.js && node --check progress.js && node --check cache.js && node --check storage.js" },
   "dependencies": {
     "playwright-core": "1.65.0",
     "string-width": "8.3.0"

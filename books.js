@@ -2,6 +2,8 @@ import { BASE, initialState } from './session.js';
 import { Cache } from './cache.js';
 import { loadProgress } from './progress.js';
 
+const SYNC_WARNING = '本地阅读不受影响，网页章节未能更新：';
+
 function normalize(book, inShelf = false) {
   return {
     id: String(book.bookId),
@@ -151,9 +153,8 @@ export class Books {
       throw new Error('未取得书籍目录，请刷新书籍列表后重新打开。');
     }
     const chapters = meta.chapterInfos.map(chapter => ({ uid: chapter.chapterUid, title: chapter.title, level: chapter.level || 1 }));
-    const index = chapters.findIndex(chapter => String(chapter.uid) === String(meta.currentChapter?.chapterUid));
     const progress = meta.progress?.book;
-    this.web = { bookId: book.id, chapters, index, cloud: progress ? {
+    this.web = { bookId: book.id, chapters, cloud: progress ? {
       chapterUid: progress.chapterUid, progress: progress.progress, updateTime: progress.updateTime,
     } : null };
     book.inShelf = Boolean(meta.isInShelf);
@@ -187,7 +188,6 @@ export class Books {
     const catalog = this.reader.locator('.readerCatalog_list_item');
     const selected = await catalog.evaluateAll(items => items.findIndex(item => item.classList.contains('readerCatalog_list_item_selected')));
     if (selected === index) {
-      this.web.index = index;
       return readContent ? this.webContent() : undefined;
     }
     if (!await catalog.first().isVisible()) {
@@ -211,26 +211,30 @@ export class Books {
     } catch (error) {
       throw new Error(`已点击网页目录，但等待选中目标章节失败：${error.message.split('\n')[0]}`);
     }
-    this.web.index = index;
     return readContent ? this.webContent() : undefined;
   }
 
-  async chapter(index) {
+  async chapter(index, { refresh = false } = {}) {
     if (index < 0 || index >= this.current.chapters.length) throw new Error('已经到达书籍边界。');
     const uid = this.current.chapters[index].uid;
-    const cached = await this.cache.get(this.current.userId, this.current.book.id);
+    const cached = refresh ? null : await this.cache.get(this.current.userId, this.current.book.id);
     let blocks = cached?.content?.[uid];
     const fromCache = Array.isArray(blocks);
     if (!fromCache) {
       await this.syncTask;
+      if (refresh) {
+        await this.cache.removeChapter(this.current.userId, this.current.book.id, uid);
+        // 重新打开网页，避免复用浏览器中先前提取的正文。
+        this.web = null;
+      }
       await this.ensureWeb(this.current.book);
       blocks = await this.webChapter(uid);
+      if (this.current.warning?.startsWith(SYNC_WARNING)) this.current.warning = '';
     }
     this.current = { ...this.current, index, blocks, fromCache };
     if (!fromCache) {
       try { await this.cache.put(this.current); } catch (error) { this.current.warning = `正文已加载，但缓存保存失败：${error.message}`; }
-    }
-    this.queueSync(uid);
+    } else this.queueSync(uid);
     return this.current;
   }
 
@@ -247,12 +251,12 @@ export class Books {
         const target = this.syncUid;
         this.syncUid = null;
         await this.ensureWeb(this.current.book);
-        await this.webChapter(target);
-        if (this.current.warning?.startsWith('本地阅读不受影响，网页章节未能更新：')) this.current.warning = '';
+        await this.webChapter(target, { readContent: false });
+        if (this.current.warning?.startsWith(SYNC_WARNING)) this.current.warning = '';
       }
     })().catch(error => {
       this.syncUid = null;
-      if (this.current) this.current.warning = `本地阅读不受影响，网页章节未能更新：${error.message.split('\n')[0]}`;
+      if (this.current) this.current.warning = `${SYNC_WARNING}${error.message.split('\n')[0]}`;
     }).finally(() => { this.syncTask = null; });
   }
 }

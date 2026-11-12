@@ -1,12 +1,12 @@
 import { chromium, request } from 'playwright-core';
-import { mkdir, readFile, writeFile, rename, chmod, rm } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { installCapture } from './capture.js';
+import { DATA, writeJson } from './storage.js';
 
 export const BASE = 'https://weread.qq.com';
-const DATA = fileURLToPath(new URL('./.data/', import.meta.url));
-const AUTH = fileURLToPath(new URL('./.data/auth.json', import.meta.url));
+const AUTH = join(DATA, 'auth.json');
 
 export function initialState(html) {
   const marker = /window\.__INITIAL_STATE__\s*=\s*/.exec(html);
@@ -129,13 +129,8 @@ export class Session {
 
   async save() {
     if ((!this.context && !this.client) || !this.authenticated) return;
-    await mkdir(DATA, { recursive: true, mode: 0o700 });
-    await chmod(DATA, 0o700);
     const state = await (this.context || this.client).storageState();
-    const temporary = `${AUTH}.tmp`;
-    await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
-    await chmod(temporary, 0o600);
-    await rename(temporary, AUTH);
+    await writeJson(AUTH, state);
   }
 
   async login() {
@@ -178,6 +173,7 @@ export class Session {
     await this.close(false);
     await rm(AUTH, { force: true });
     await rm(`${AUTH}.tmp`, { force: true });
+    await rm(`${AUTH}.${process.pid}.tmp`, { force: true });
   }
 
   async close(save = true) {
