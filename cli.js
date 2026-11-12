@@ -27,16 +27,19 @@ function quit(command) {
 }
 
 async function read(book) {
+  const startedAt = Date.now();
   terminal.busy('正在加载书籍…');
   let reading = await books.open(book);
   const userId = reading.userId;
   let position = 0;
   let message = reading.message || '';
+  let showHelp = false;
   let lines = [];
   let lineIndex = 0;
   let wrappedWidth = 0;
   let text = '';
   let styles = [];
+  let starts = [];
   let bookmark = null;
   let focus = 'body';
   let selectedChapter = reading.index;
@@ -45,6 +48,7 @@ async function read(book) {
     lines = [];
     const content = readingContent(reading.blocks);
     styles = content.styles;
+    starts = content.starts;
     text = content.text || (reading.message
       ? '[本章正文未加载，可继续翻页或切换到目录选择章节。]'
       : '[网页已返回本目录项，但没有可提取文字，可能为图片扉页。可继续翻页。]');
@@ -64,6 +68,15 @@ async function read(book) {
     updateText();
   }
 
+  function scrollBody(direction) {
+    const lastLine = Math.max(0, lines.length - terminal.readingLayout.height);
+    const target = Math.max(0, Math.min(lastLine, lineIndex + direction));
+    if (target === lineIndex) return;
+    position = lines[target].start;
+    message = '';
+    terminal.refresh();
+  }
+
   try {
     while (terminal.running) {
       const command = await terminal.ask(() => {
@@ -72,7 +85,7 @@ async function read(book) {
         catalogOffset = Math.max(0, Math.min(catalogOffset, selectedChapter, reading.chapters.length - layout.height));
         if (selectedChapter >= catalogOffset + layout.height) catalogOffset = selectedChapter - layout.height + 1;
         if (!lines.length || wrappedWidth !== layout.width) {
-          lines = wrapLines(text, layout.width, styles);
+          lines = wrapLines(text, layout.width, styles, starts);
           wrappedWidth = layout.width;
         }
         const lastLine = Math.max(0, lines.length - layout.height);
@@ -85,10 +98,11 @@ async function read(book) {
             terminal.showCatalog
               ? `${chapter?.title || '正文'} · ${reading.index + 1}/${reading.chapters.length} 章 · ${lineIndex + 1}–${Math.min(lines.length, lineIndex + layout.height)}/${lines.length} 行`
               : chapter?.title || '正文', { focus, selected: selectedChapter, offset: catalogOffset }),
-          `${layout.sidebar
+          !terminal.showCatalog ? (showHelp ? '←/→ 翻页 ↑/↓ 滚动 回车 下页 h 目录 a 书架 Esc 返回 q 退出' : '← for agents · ? for shortcuts') : `${layout.sidebar
             ? `← 目录 / → 正文 · ${focus === 'catalog' ? '↑/↓ 选章 · 回车 打开' : '↑/↓ 翻页 · 回车 下页'}`
-            : '←/→ 翻页 · ↑/↓ 滚动 · 回车 下页'} · h ${terminal.showCatalog ? '隐藏' : '显示'}目录 · a 加书架 · b 返回 · q 退出`, message || reading.warning || '');
+            : '←/→ 翻页 · ↑/↓ 滚动 · 回车 下页'} · h ${terminal.showCatalog ? '隐藏' : '显示'}目录 · a 加书架 · Esc 返回 · q 退出`, message || reading.warning || '', { startedAt });
       }, {
+        onWheel: scrollBody,
         onArrow: key => {
           if (terminal.readingLayout.sidebar) {
             if (key === 'left' || key === 'right') {
@@ -103,20 +117,16 @@ async function read(book) {
             return;
           }
           if (key === 'left' || key === 'right') return key === 'right' ? '↓' : '↑';
-          const direction = key === 'down' ? 1 : -1;
-          const lastLine = Math.max(0, lines.length - terminal.readingLayout.height);
-          const target = Math.max(0, Math.min(lastLine, lineIndex + direction));
-          if (target === lineIndex) return;
-          position = lines[target].start;
-          message = '';
-          terminal.refresh();
+          scrollBody(key === 'down' ? 1 : -1);
         },
       });
-      if (quit(command) || command === 'b') return;
+      if (quit(command) || command === '\x1b') return;
       message = '';
       try {
         if (command === 'h') {
           terminal.showCatalog = !terminal.showCatalog;
+        } else if (command === '?') {
+          showHelp = !showHelp;
         } else if (command === 'a') {
           await books.add(book);
           message = '已在书架中。';
@@ -200,8 +210,8 @@ async function list(kind, keyword = '') {
       items.length ? items.slice(offset, offset + terminal.listSize).map((book, i) =>
         `${offset + i + 1}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`
       ) : ['暂无书籍。'],
-      '编号 阅读 · a 编号 加书架 · n/p 翻页 · r 刷新 · b 返回 · q 退出', message));
-    if (quit(command) || command === 'b') return;
+      '编号 阅读 · a 编号 加书架 · n/p 翻页 · r 刷新 · Esc 返回 · q 退出', message));
+    if (quit(command) || command === '\x1b') return;
     message = '';
     try {
       if (command === 'r') await load(true);
@@ -240,15 +250,16 @@ try {
       '1. 我的书架', '2. 猜你喜欢', '3. 搜索书籍', '4. 本地缓存',
     ], '1/2/3/4 进入 · login 手动扫码登录 · logout 退出登录 · q 退出程序', message));
     if (quit(command)) break;
+    if (command === '\x1b') continue;
     message = '';
     try {
       if (command === '1') await list('shelf');
       else if (command === '2') await list('recommend');
       else if (command === '4') await list('cache');
       else if (command === '3') {
-        const keyword = await terminal.ask(() => terminal.screen('搜索书籍', [], '输入关键词 · b 返回 · q 退出'));
+        const keyword = await terminal.ask(() => terminal.screen('搜索书籍', [], '输入关键词 · Esc 返回 · q 退出'));
         if (quit(keyword)) break;
-        if (keyword && keyword !== 'b') await list('search', keyword);
+        if (keyword && keyword !== '\x1b') await list('search', keyword);
       } else if (command === 'login') {
         terminal.busy('请扫码并在手机确认；检测成功后自动返回菜单，最长等待三分钟。等待期间无需输入命令。');
         await session.login();
