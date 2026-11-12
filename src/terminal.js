@@ -15,7 +15,7 @@ const contentColors = {
 };
 const sentenceColors = ['red', 'green', 'blue', 'cyan'];
 const taskColors = { ...contentColors, heading: '225;205;156', caption: '166;193;155' };
-const projectPath = dirname(fileURLToPath(import.meta.url));
+const projectPath = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function readingContent(blocks) {
   let text = '';
@@ -236,9 +236,9 @@ export class Terminal {
   readingLines(chapters, index, body, heading = '正文', { focus = 'body', selected = index, offset = 0 } = {}) {
     const { sidebar, height, width } = this.readingLayout;
     const title = { text: fitLine(heading, width), styles: [{ start: 0, end: heading.length, type: 'heading' }] };
-    if (!this.showCatalog) return [{ ...title, prefix: '• ' }, ...body.map(line => ({
+    if (!this.showCatalog) return [{ ...title, prefix: '  ' }, ...body.map(line => ({
       ...line,
-      prefix: line.blockStart ? (['image', 'caption', 'table'].includes(line.styles[0]?.type) ? '└ ' : '• ') : '  ',
+      prefix: line.blockStart && ['image', 'caption', 'table'].includes(line.styles[0]?.type) ? '└ ' : '  ',
     }))];
     if (!sidebar) return [title, ...body];
     const start = offset;

@@ -2,7 +2,7 @@ import { mkdir, writeFile, rename, chmod } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const DATA = fileURLToPath(new URL('./.data/', import.meta.url));
+export const DATA = fileURLToPath(new URL('../.data/', import.meta.url));
 
 export async function writeJson(file, value) {
   const directory = dirname(file);
