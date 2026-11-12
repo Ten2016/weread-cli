@@ -131,7 +131,9 @@ export class Books {
     if (index < 0) index = chapters.findIndex(chapter => String(chapter.uid) === String(cloud?.chapterUid));
     this.current = { book: metadata.book, chapters, cloud, userId, index: Math.max(0, index), warning };
     try {
-      return await this.chapter(this.current.index);
+      const reading = await this.chapter(this.current.index);
+      reading.position = String(chapters[reading.index].uid) === String(saved?.chapterUid) ? saved.position : 0;
+      return reading;
     } catch (error) {
       const available = cached ? chapters.findIndex(chapter => cached.content?.[chapter.uid]?.length) : -1;
       if (available >= 0) {

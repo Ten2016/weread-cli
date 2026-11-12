@@ -18,7 +18,11 @@ async function readAll() {
 export async function loadProgress(userId, bookId) {
   const saved = (await readAll())[userId]?.[bookId];
   if (!saved || !['string', 'number'].includes(typeof saved.chapterUid)) return null;
-  return { chapterUid: saved.chapterUid, updatedAt: saved.updatedAt };
+  return {
+    chapterUid: saved.chapterUid,
+    position: Number.isSafeInteger(saved.position) && saved.position >= 0 ? saved.position : 0,
+    updatedAt: saved.updatedAt,
+  };
 }
 
 export async function loadReadingTimes(userId) {
@@ -30,6 +34,8 @@ export async function loadReadingTimes(userId) {
 export async function saveProgress(userId, bookId, bookmark) {
   if (!userId || !bookmark) return;
   const all = await readAll();
-  all[userId] = { ...all[userId], [bookId]: { chapterUid: bookmark.chapterUid, updatedAt: Date.now() } };
+  all[userId] = { ...all[userId], [bookId]: {
+    chapterUid: bookmark.chapterUid, position: bookmark.position, updatedAt: Date.now(),
+  } };
   await writeJson(FILE, all);
 }

@@ -12,7 +12,7 @@ export async function readBook(book, books, terminal) {
   terminal.busy('正在加载书籍…');
   let reading = await books.open(book);
   const userId = reading.userId;
-  let position = 0;
+  let position = reading.position ?? 0;
   let message = reading.message || '';
   let showHelp = false;
   let lines = [];
@@ -72,7 +72,7 @@ export async function readBook(book, books, terminal) {
     lineIndex = Math.max(0, Math.min(lastLine, lines.findLastIndex(line => line.start <= position)));
     if (!Number.isFinite(position)) position = lines[lineIndex].start;
     const chapter = reading.chapters[reading.index];
-    if (chapter && reading.blocks.length && !reading.message) bookmark = { chapterUid: chapter.uid };
+    if (chapter && reading.blocks.length && !reading.message) bookmark = { chapterUid: chapter.uid, position: lines[lineIndex].start };
     const title = chapter?.title || '正文';
     const heading = terminal.showCatalog
       ? `${title} · ${reading.index + 1}/${reading.chapters.length} 章 · ${lineIndex + 1}–${Math.min(lines.length, lineIndex + layout.height)}/${lines.length} 行`
