@@ -2,6 +2,7 @@ import { Session } from './session.js';
 import { Books } from './books.js';
 import { Terminal } from './terminal.js';
 import { readBook } from './reader.js';
+import { loadReadingTimes } from './progress.js';
 
 const session = new Session();
 const books = new Books(session);
@@ -20,9 +21,20 @@ async function list(kind, keyword = '') {
   let cursor;
   let hasMore = false;
   let offset = 0;
+  let selected = 0;
+  let readingTimes = {};
   let message = '';
   let fromCache = kind === 'cache';
   const title = kind === 'cache' ? '本地缓存' : kind === 'shelf' ? '我的书架' : kind === 'recommend' ? '猜你喜欢' : `搜索：${keyword}`;
+
+  async function updateReadingTimes() {
+    try {
+      readingTimes = await loadReadingTimes(items[0]?.cacheUserId || session.userId);
+    } catch (error) {
+      readingTimes = {};
+      message ||= error.message;
+    }
+  }
 
   async function load(reset = false) {
     terminal.busy('正在获取书籍…');
@@ -44,38 +56,64 @@ async function list(kind, keyword = '') {
         message = '当前使用本地已缓存的书籍列表。';
       }
     } else items = await books.recommendations();
-    if (reset) offset = 0;
+    if (reset) {
+      selected = offset = 0;
+      await updateReadingTimes();
+    }
+  }
+
+  function render() {
+    const size = terminal.listSize;
+    selected = Math.max(0, Math.min(selected, items.length - 1));
+    offset = Math.max(0, Math.min(offset, selected));
+    if (selected >= offset + size) offset = selected - size + 1;
+    terminal.screen(`${title} · ${loginLabel()} · ${fromCache ? '使用缓存' : '未使用缓存'}`,
+      terminal.bookLines(items, selected, offset, readingTimes),
+      '↑/↓ 选择 · ←/→ 翻页 · 回车 阅读 · a 加书架 · r 刷新 · Esc 返回 · q 退出', message);
+  }
+
+  async function navigate(key) {
+    const direction = key === '↑' || key === '←' ? -1 : 1;
+    const page = key === '←' || key === '→';
+    const size = terminal.listSize;
+    const nextOffset = page ? Math.max(0, Math.min(items.length, offset + direction * size)) : offset;
+    if (page && nextOffset === offset) return;
+    const target = page ? nextOffset + selected - offset : selected + direction;
+    const boundary = page ? nextOffset : target;
+    const end = page ? nextOffset + size : target + 1;
+    while (items.length < end && hasMore) await load();
+    if (boundary >= items.length) {
+      message = '当前列表已到末尾，可输入 r 刷新。';
+      return;
+    }
+    selected = Math.max(0, Math.min(items.length - 1, target));
+    if (page) offset = nextOffset;
   }
 
   await load(true);
   while (terminal.running) {
-    const command = await terminal.ask(() => terminal.screen(`${title} · ${loginLabel()} · ${fromCache ? '使用缓存' : '未使用缓存'}`,
-      items.length ? items.slice(offset, offset + terminal.listSize).map((book, i) =>
-        `${offset + i + 1}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`
-      ) : ['暂无书籍。'],
-      '编号 阅读 · a 编号 加书架 · n/p 翻页 · r 刷新 · Esc 返回 · q 退出', message));
+    const command = await terminal.ask(render, {
+      onArrow: key => ({ up: '↑', down: '↓', left: '←', right: '→' })[key],
+    });
     if (command === 'q' || command === '\x1b') return;
     message = '';
     try {
       if (command === 'r') await load(true);
-      else if (command === 'p') offset = Math.max(0, offset - terminal.listSize);
-      else if (command === 'n') {
-        const next = offset + terminal.listSize;
-        if (next >= items.length && hasMore) await load();
-        if (next < items.length) offset = next;
-        else message = '当前列表已到末尾，可输入 r 刷新。';
-      } else {
+      else if (['↑', '↓', '←', '→'].includes(command)) await navigate(command);
+      else {
         const match = /^(a\s+)?(\d+)$/.exec(command);
-        const index = match ? Number(match[2]) - 1 : -1;
-        if (index < 0 || index >= items.length) message = '请输入有效书籍编号。';
-        else if (match[1]) {
+        const index = command === '' || command === 'a' ? selected : match ? Number(match[2]) - 1 : -1;
+        if (index < 0 || index >= items.length) message = '请使用方向键选择书籍，回车阅读，或输入有效书籍编号。';
+        else if (command === 'a' || match?.[1]) {
           await books.add(items[index]);
           message = '已在书架中。';
         } else {
+          selected = index;
           try {
             await readBook(items[index], books, terminal);
           } finally {
             await books.closeReader();
+            await updateReadingTimes();
           }
         }
       }

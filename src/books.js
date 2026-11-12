@@ -4,7 +4,10 @@ import { loadProgress } from './progress.js';
 
 const SYNC_WARNING = '本地阅读不受影响，网页章节未能更新：';
 
-function normalize(book, inShelf = false) {
+function normalize(book, inShelf = false, progress = null) {
+  const readTime = Number(progress?.updateTime);
+  const started = progress?.chapterUid > 0 || progress?.chapterOffset > 0 || progress?.progress > 0;
+  const percent = progress ? progress.progress ?? 0 : null;
   return {
     id: String(book.bookId),
     title: book.title || '未命名书籍',
@@ -12,6 +15,8 @@ function normalize(book, inShelf = false) {
     url: book.readerLink || '',
     format: book.format || '',
     inShelf,
+    lastReadAt: started && Number.isFinite(readTime) && readTime > 0 ? readTime * 1000 : null,
+    readingProgress: Number.isFinite(percent) && percent >= 0 && percent <= 100 ? percent : null,
   };
 }
 
@@ -33,15 +38,23 @@ export class Books {
     const shelf = state.shelf;
     const indexes = (shelf.rawIndexes || []).filter(index => index.role === 'book' && index.type === 0);
     const books = new Map((shelf.rawBooks || []).map(book => [String(book.bookId), book]));
-    const missing = indexes.map(index => String(index.bookId)).filter(id => !books.has(id));
+    const progress = new Map((shelf.bookProgress || []).map(item => [String(item.bookId), item]));
+    const missing = indexes.map(index => String(index.bookId)).filter(id => !books.has(id) || !progress.has(id));
     for (let offset = 0; offset < missing.length; offset += 100) {
-      const data = await this.session.json('/web/shelf/syncBook', {
-        method: 'POST',
-        data: { bookIds: missing.slice(offset, offset + 100), count: 100, isArchive: null, currentArchiveId: null, loadMore: true },
-      });
-      for (const book of data.books || []) books.set(String(book.bookId), book);
+      const bookIds = missing.slice(offset, offset + 100);
+      try {
+        const data = await this.session.json('/web/shelf/syncBook', {
+          method: 'POST',
+          data: { bookIds, count: 100, isArchive: null, currentArchiveId: null, loadMore: true },
+        });
+        for (const book of data.books || []) books.set(String(book.bookId), book);
+        for (const item of data.bookProgress || []) progress.set(String(item.bookId), item);
+      } catch (error) {
+        if (bookIds.some(id => !books.has(id))) throw error;
+      }
     }
-    return indexes.map(index => books.get(String(index.bookId))).filter(Boolean).map(book => normalize(book, true));
+    return indexes.map(index => books.get(String(index.bookId))).filter(Boolean)
+      .map(book => normalize(book, true, progress.get(String(book.bookId))));
   }
 
   async search(keyword, cursor = { sid: '', maxIdx: 0 }) {
@@ -109,6 +122,8 @@ export class Books {
       metadata = { ...this.web, book, userId: this.session.userId };
     }
     const { chapters, cloud, userId } = metadata;
+    metadata.book.readingProgress = book.readingProgress ?? metadata.book.readingProgress ?? cloud?.progress ?? null;
+    book.readingProgress = metadata.book.readingProgress;
     let saved;
     let warning = '';
     try { saved = await loadProgress(userId, book.id); } catch (error) { warning = error.message; }

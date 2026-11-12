@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "微信读书终端阅读器（WeRead Terminal Reader / TUI）：扫码登录、正文阅读、键盘翻页、隐藏模式、离线缓存与续读，工作间隙摸鱼读书。",
+  "description": "微信读书终端阅读器（WeRead Terminal Reader / TUI）：Codex CLI 风格的摸鱼读书神器，支持扫码登录、键盘翻页、离线缓存与续读。",
   "keywords": ["weread", "wechat-reading", "terminal-reader", "tui", "cli", "ebook-reader", "reading", "nodejs", "微信读书", "终端阅读器", "摸鱼"],
   "repository": { "type": "git", "url": "https://github.com/Ten2016/weread-cli.git" },
   "homepage": "https://github.com/Ten2016/weread-cli#readme",

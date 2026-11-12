@@ -21,6 +21,12 @@ export async function loadProgress(userId, bookId) {
   return { chapterUid: saved.chapterUid, updatedAt: saved.updatedAt };
 }
 
+export async function loadReadingTimes(userId) {
+  if (!userId) return {};
+  const books = (await readAll())[userId] || {};
+  return Object.fromEntries(Object.entries(books).map(([id, saved]) => [id, saved?.updatedAt]));
+}
+
 export async function saveProgress(userId, bookId, bookmark) {
   if (!userId || !bookmark) return;
   const all = await readAll();

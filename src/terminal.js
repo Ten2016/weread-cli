@@ -10,17 +10,22 @@ const segments = new Intl.Segmenter('zh', { granularity: 'grapheme' });
 const sentences = new Intl.Segmenter('zh', { granularity: 'sentence' });
 export const clean = value => String(value ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const contentColors = {
-  heading: '197;174;235', image: '166;193;155', caption: '211;183;137', table: '154;187;213',
+  heading: '224;154;172', image: '166;193;155', caption: '211;183;137', table: '154;187;213',
+  status: '225;205;156',
   red: '224;154;172', green: '170;204;151', blue: '158;190;235', cyan: '139;207;202',
+  violet: '193;174;235',
+  time: '150;150;150',
 };
 const sentenceColors = ['red', 'green', 'blue', 'cyan'];
-const taskColors = { ...contentColors, heading: '225;205;156', caption: '166;193;155' };
+const bookColors = ['red', 'status', 'caption', 'cyan', 'blue', 'violet', 'green'];
+const taskColors = { ...contentColors, caption: '166;193;155' };
 const projectPath = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function readingContent(blocks) {
   let text = '';
   const styles = [];
   const starts = [];
+  let nextSentenceColor = null;
   for (const [index, block] of blocks.entries()) {
     if (index) text += '\n\n';
     const value = clean(block.text).replace(/\t/g, '    ');
@@ -41,8 +46,14 @@ export function readingContent(blocks) {
     if (block.type === 'text') {
       const protectedStyles = styles.slice(styleStart);
       for (const { segment, index: from } of sentences.segment(value)) {
-        if (!segment.trim() || Math.random() >= 0.2) continue;
-        const type = sentenceColors[Math.floor(Math.random() * sentenceColors.length)];
+        if (!segment.trim()) continue;
+        let type = nextSentenceColor;
+        nextSentenceColor = null;
+        if (!type && Math.random() < 0.12) {
+          type = sentenceColors[Math.floor(Math.random() * sentenceColors.length)];
+          nextSentenceColor = type;
+        }
+        if (!type) continue;
         const end = from + segment.length;
         let offset = from;
         for (const style of protectedStyles) {
@@ -52,7 +63,7 @@ export function readingContent(blocks) {
         }
         addStyle(offset, end, type);
       }
-    }
+    } else nextSentenceColor = null;
     text += value;
   }
   styles.sort((a, b) => a.start - b.start);
@@ -66,7 +77,9 @@ function renderContent(content, colors = contentColors) {
   for (const style of content.styles || []) {
     result += clean(content.text.slice(cursor, style.start));
     const value = clean(content.text.slice(style.start, style.end));
-    result += stdout.isTTY ? `\x1b[38;2;${colors[style.type]}m${value}\x1b[39m` : value;
+    result += stdout.isTTY
+      ? `\x1b[${content.bold === false ? 22 : 1};38;2;${colors[style.type]}m${value}\x1b[22;39m`
+      : value;
     cursor = style.end;
   }
   return result + clean(content.text.slice(cursor));
@@ -84,6 +97,18 @@ function fitLine(value, width) {
     columns += size;
   }
   return result + '…' + ' '.repeat(Math.max(0, width - columns - 1));
+}
+
+function highlight(value, focused) {
+  return stdout.isTTY && focused ? `\x1b[48;2;40;62;44m${value}\x1b[49m` : value;
+}
+
+function relativeTime(timestamp, now) {
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) return '';
+  const minutes = Math.floor((now - timestamp) / 60000);
+  if (minutes < 60) return `${minutes}分钟`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}小时` : `${Math.floor(hours / 24)}天`;
 }
 
 export function wrapLines(text, width, styles = [], starts = []) {
@@ -222,7 +247,34 @@ export class Terminal {
 
   get width() { return Math.max(1, Math.min(160, (stdout.columns || 80) - 2)); }
   get height() { return Math.max(3, (stdout.rows || 28) - 9); }
-  get listSize() { return Math.max(3, Math.min(15, this.height)); }
+  get listSize() { return this.height; }
+
+  bookLines(books, selected, offset, readingTimes = {}) {
+    if (!books.length) return ['暂无书籍。'];
+    const digits = String(books.length).length;
+    const now = Date.now();
+    const times = books.map(book => relativeTime(Math.max(book.lastReadAt || 0, readingTimes[book.id] || 0), now));
+    const timeWidth = Math.max(0, ...times.map(time => stringWidth(time)));
+    const percentages = books.map(book => Number.isFinite(book.readingProgress) && book.readingProgress >= 0 && book.readingProgress <= 100
+      ? `${Math.round(book.readingProgress)}%` : '');
+    const progressWidth = percentages.some(Boolean) ? 4 : 0;
+    return books.slice(offset, offset + this.listSize).map((book, row) => {
+      const index = offset + row;
+      const time = timeWidth ? `${fitLine(times[index], timeWidth)}  ` : '';
+      const percent = progressWidth ? `${percentages[index].padStart(progressWidth)}  ` : '';
+      const text = fitLine(`${index === selected ? '›' : ' '} ${time}${percent}${String(index + 1).padStart(digits)}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`, this.width);
+      const titleStart = timeWidth || progressWidth ? Math.min(text.length, 2 + time.length + percent.length) : 0;
+      return {
+        text,
+        bold: false,
+        styles: [
+          { start: 0, end: titleStart, type: 'time' },
+          { start: titleStart, end: text.trimEnd().length, type: bookColors[index % bookColors.length] },
+        ].filter(style => style.end > style.start),
+        focused: index === selected,
+      };
+    });
+  }
 
   get readingLayout() {
     const sidebar = this.showCatalog && this.width >= 70 ? Math.min(36, Math.floor(this.width * 0.28)) : 0;
@@ -262,12 +314,12 @@ export class Terminal {
     const rendered = lines.map(line => {
       if (typeof line === 'string' || !Object.hasOwn(line, 'catalog')) {
         const prefix = line.prefix || '';
-        return (stdout.isTTY && prefix ? `\x1b[90m${prefix}\x1b[39m` : prefix)
+        const rendered = (stdout.isTTY && prefix ? `\x1b[90m${prefix}\x1b[39m` : prefix)
           + renderContent(line, title === null ? taskColors : contentColors);
+        return highlight(rendered, line.focused);
       }
       const catalog = clean(line.catalog);
-      const highlighted = stdout.isTTY && line.focused
-        ? `\x1b[48;2;40;62;44m${catalog}\x1b[49m` : catalog;
+      const highlighted = highlight(catalog, line.focused);
       return `${highlighted} │ ${renderContent(line.body)}`;
     });
     if (this.inputBar) {
@@ -278,9 +330,9 @@ export class Terminal {
       const pathStart = '  GPT-6-Astra high · '.length;
       const pathEnd = Math.min(value.length, pathStart + path.length);
       const statusLine = { text: value, styles: [
-        { start: 0, end: Math.min(pathStart, value.length), type: 'heading' },
+        { start: 0, end: Math.min(pathStart, value.length), type: 'status' },
         { start: Math.min(pathStart, value.length), end: pathEnd, type: 'image' },
-        { start: pathEnd, end: value.length, type: 'heading' },
+        { start: pathEnd, end: value.length, type: 'status' },
       ] };
       const now = new Date();
       const seconds = Math.max(0, Math.floor((now.getTime() - startedAt) / 1000));
@@ -312,7 +364,7 @@ export class Terminal {
     this.drawInput();
     const history = this.rl.history;
     let escaped = false;
-    // 阅读时暂停命令历史，避免上下键先被 readline 用于回填命令。
+    // 方向键导航时暂停命令历史，避免上下键先被 readline 用于回填命令。
     if (onArrow) this.rl.history = [];
     const onKey = (_, key) => {
       if (!this.waiting || !key) return;

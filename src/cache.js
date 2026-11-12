@@ -50,7 +50,10 @@ export class Cache {
       }
       const file = join(directory, `${key(book.id)}.json`);
       const old = await read(file, { content: {} });
-      const metadata = { id: book.id, title: book.title, author: book.author, url: book.url, format: book.format, inShelf: book.inShelf };
+      const metadata = {
+        id: book.id, title: book.title, author: book.author, url: book.url, format: book.format, inShelf: book.inShelf,
+        readingProgress: book.readingProgress ?? cloud?.progress ?? null,
+      };
       await writeJson(file, {
         book: metadata, chapters, cloud,
         content: { ...old.content, [uid]: blocks.map(block => ({ type: block.type, text: block.text })) },
