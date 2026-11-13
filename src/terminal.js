@@ -5,70 +5,24 @@ import { Transform, Writable } from 'node:stream';
 import { homedir } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { clean, graphemes } from './content.js';
 
-const segments = new Intl.Segmenter('zh', { granularity: 'grapheme' });
-const sentences = new Intl.Segmenter('zh', { granularity: 'sentence' });
-export const clean = value => String(value ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const contentColors = {
-  heading: '224;154;172', image: '166;193;155', caption: '211;183;137', table: '154;187;213',
+  heading: '224;154;172',
+  image: '166;193;155',
+  caption: '211;183;137',
+  table: '154;187;213',
   status: '225;205;156',
-  red: '224;154;172', green: '170;204;151', blue: '158;190;235', cyan: '139;207;202',
+  red: '224;154;172',
+  green: '170;204;151',
+  blue: '158;190;235',
+  cyan: '139;207;202',
   violet: '193;174;235',
   time: '150;150;150',
 };
-const sentenceColors = ['red', 'green', 'blue', 'cyan'];
 const bookColors = ['red', 'status', 'caption', 'cyan', 'blue', 'violet', 'green'];
 const taskColors = { ...contentColors, caption: '166;193;155' };
 const projectPath = dirname(dirname(fileURLToPath(import.meta.url)));
-
-export function readingContent(blocks) {
-  let text = '';
-  const styles = [];
-  const starts = [];
-  let nextSentenceColor = null;
-  for (const [index, block] of blocks.entries()) {
-    if (index) text += '\n\n';
-    const value = clean(block.text).replace(/\t/g, '    ');
-    const start = text.length;
-    const styleStart = styles.length;
-    starts.push(start);
-    let cursor = 0;
-    const addStyle = (from, to, type) => {
-      if (to > from && Object.hasOwn(contentColors, type)) styles.push({ start: start + from, end: start + to, type });
-    };
-    for (const match of value.matchAll(/\[图片(?:：[^\]\n]*)?\]/g)) {
-      if (block.type === 'code') break;
-      addStyle(cursor, match.index, block.type);
-      cursor = match.index + match[0].length;
-      addStyle(match.index, cursor, 'image');
-    }
-    addStyle(cursor, value.length, block.type);
-    if (block.type === 'text') {
-      const protectedStyles = styles.slice(styleStart);
-      for (const { segment, index: from } of sentences.segment(value)) {
-        if (!segment.trim()) continue;
-        let type = nextSentenceColor;
-        nextSentenceColor = null;
-        if (!type && Math.random() < 0.12) {
-          type = sentenceColors[Math.floor(Math.random() * sentenceColors.length)];
-          nextSentenceColor = type;
-        }
-        if (!type) continue;
-        const end = from + segment.length;
-        let offset = from;
-        for (const style of protectedStyles) {
-          if (style.end <= start + offset || style.start >= start + end) continue;
-          addStyle(offset, style.start - start, type);
-          offset = Math.min(end, style.end - start);
-        }
-        addStyle(offset, end, type);
-      }
-    } else nextSentenceColor = null;
-    text += value;
-  }
-  styles.sort((a, b) => a.start - b.start);
-  return { text, styles, starts };
-}
 
 function renderContent(content, colors = contentColors) {
   if (typeof content === 'string') return clean(content);
@@ -90,7 +44,7 @@ function fitLine(value, width) {
   if (stringWidth(text) <= width) return text + ' '.repeat(width - stringWidth(text));
   let result = '';
   let columns = 0;
-  for (const { segment } of segments.segment(text)) {
+  for (const { segment } of graphemes.segment(text)) {
     const size = stringWidth(segment);
     if (columns + size > width - 1) break;
     result += segment;
@@ -109,57 +63,6 @@ function relativeTime(timestamp, now) {
   if (minutes < 60) return `${minutes}分钟`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}小时` : `${Math.floor(hours / 24)}天`;
-}
-
-export function wrapLines(text, width, styles = [], starts = []) {
-  const lines = [];
-  let line = '';
-  let columns = 0;
-  let start = 0;
-  for (const { segment: sentence, index: sentenceStart } of sentences.segment(text)) {
-    const sentenceText = sentence.trimEnd();
-    const sentenceWidth = stringWidth(sentenceText);
-    if (line && columns + sentenceWidth > width) {
-      lines.push({ text: line, start });
-      line = '';
-      columns = 0;
-      start = sentenceStart;
-    }
-    for (const { segment, index: offset } of segments.segment(sentence)) {
-      const index = sentenceStart + offset;
-      if (segment === '\n') {
-        lines.push({ text: line, start });
-        line = '';
-        columns = 0;
-        start = index + segment.length;
-        continue;
-      }
-      const size = stringWidth(segment);
-      if (columns + size > width && offset >= sentenceText.length) continue;
-      if (columns + size > width && line) {
-        lines.push({ text: line, start });
-        line = '';
-        columns = 0;
-        start = index;
-      }
-      line += segment;
-      columns += size;
-    }
-  }
-  if (line || !lines.length) lines.push({ text: line, start });
-  let styleIndex = 0;
-  const blockStarts = new Set(starts);
-  for (const line of lines) {
-    line.blockStart = blockStarts.has(line.start);
-    const end = line.start + line.text.length;
-    while (styleIndex < styles.length && styles[styleIndex].end <= line.start) styleIndex++;
-    line.styles = [];
-    for (let index = styleIndex; index < styles.length && styles[index].start < end; index++) {
-      const style = styles[index];
-      line.styles.push({ start: Math.max(0, style.start - line.start), end: Math.min(end, style.end) - line.start, type: style.type });
-    }
-  }
-  return lines;
 }
 
 export class Terminal {
@@ -195,13 +98,20 @@ export class Terminal {
                 if (button === 64 || button === 65) this.onWheel?.(button === 64 ? -1 : 1);
               }
               offset = escape + (sgr ? sgr[0].length : 6);
-            } else if (value === '\x1b' || value === '\x1b[' || (legacy && rest.length < 6)
-              || (rest.length <= 64 && /^\x1b\[<[\d;]*$/.test(value))) {
+            } else if (
+              value === '\x1b' ||
+              value === '\x1b[' ||
+              (legacy && rest.length < 6) ||
+              (rest.length <= 64 && /^\x1b\[<[\d;]*$/.test(value))
+            ) {
               pending = rest;
-              mouseTimer = setTimeout(() => {
-                if (pending.length <= 2) this.input.push(pending);
-                pending = Buffer.alloc(0);
-              }, pending.length <= 2 ? 50 : 500);
+              mouseTimer = setTimeout(
+                () => {
+                  if (pending.length <= 2) this.input.push(pending);
+                  pending = Buffer.alloc(0);
+                },
+                pending.length <= 2 ? 50 : 500,
+              );
               break;
             } else {
               this.input.push(rest.subarray(0, 1));
@@ -210,7 +120,7 @@ export class Terminal {
           }
           done();
         },
-        flush: done => {
+        flush: (done) => {
           clearTimeout(mouseTimer);
           if (pending.length <= 2) this.input.push(pending);
           done();
@@ -218,16 +128,18 @@ export class Terminal {
       });
       this.input.isTTY = true;
       Object.defineProperty(this.input, 'isRaw', { get: () => stdin.isRaw });
-      this.input.setRawMode = mode => stdin.setRawMode(mode);
+      this.input.setRawMode = (mode) => stdin.setRawMode(mode);
       stdin.pipe(this.input);
     }
     // 灰底输入栏由屏幕定位绘制，readline 只负责编辑，避免长输入换行挤动状态栏。
-    const output = stdout.isTTY ? new Writable({
-      write: (chunk, encoding, done) => {
-        if (!this.inputBar) stdout.write(chunk, encoding);
-        done();
-      },
-    }) : stdout;
+    const output = stdout.isTTY
+      ? new Writable({
+          write: (chunk, encoding, done) => {
+            if (!this.inputBar) stdout.write(chunk, encoding);
+            done();
+          },
+        })
+      : stdout;
     if (output !== stdout) {
       output.isTTY = true;
       Object.defineProperty(output, 'columns', { get: () => stdout.columns });
@@ -257,24 +169,36 @@ export class Terminal {
     });
   }
 
-  get width() { return Math.max(1, Math.min(160, (stdout.columns || 80) - 2)); }
-  get height() { return Math.max(3, (stdout.rows || 28) - 9); }
-  get listSize() { return this.height; }
+  get width() {
+    return Math.max(1, Math.min(160, (stdout.columns || 80) - 2));
+  }
+  get height() {
+    return Math.max(3, (stdout.rows || 28) - 9);
+  }
+  get listSize() {
+    return this.height;
+  }
 
   bookLines(books, selected, offset, readingTimes = {}) {
     if (!books.length) return ['暂无书籍。'];
     const digits = String(books.length).length;
     const now = Date.now();
-    const times = books.map(book => relativeTime(Math.max(book.lastReadAt || 0, readingTimes[book.id] || 0), now));
-    const timeWidth = Math.max(0, ...times.map(time => stringWidth(time)));
-    const percentages = books.map(book => Number.isFinite(book.readingProgress) && book.readingProgress >= 0 && book.readingProgress <= 100
-      ? `${Math.round(book.readingProgress)}%` : '');
+    const times = books.map((book) => relativeTime(Math.max(book.lastReadAt || 0, readingTimes[book.id] || 0), now));
+    const timeWidth = Math.max(0, ...times.map((time) => stringWidth(time)));
+    const percentages = books.map((book) =>
+      Number.isFinite(book.readingProgress) && book.readingProgress >= 0 && book.readingProgress <= 100
+        ? `${Math.round(book.readingProgress)}%`
+        : '',
+    );
     const progressWidth = percentages.some(Boolean) ? 4 : 0;
     return books.slice(offset, offset + this.listSize).map((book, row) => {
       const index = offset + row;
       const time = timeWidth ? `${fitLine(times[index], timeWidth)}  ` : '';
       const percent = progressWidth ? `${percentages[index].padStart(progressWidth)}  ` : '';
-      const text = fitLine(`${index === selected ? '›' : ' '} ${time}${percent}${String(index + 1).padStart(digits)}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`, this.width);
+      const text = fitLine(
+        `${index === selected ? '›' : ' '} ${time}${percent}${String(index + 1).padStart(digits)}. ${book.title}${book.author ? ` — ${book.author}` : ''}${book.inShelf ? ' [书架]' : ''}`,
+        this.width,
+      );
       const titleStart = timeWidth || progressWidth ? Math.min(text.length, 2 + time.length + percent.length) : 0;
       return {
         text,
@@ -282,7 +206,7 @@ export class Terminal {
         styles: [
           { start: 0, end: titleStart, type: 'time' },
           { start: titleStart, end: text.trimEnd().length, type: bookColors[index % bookColors.length] },
-        ].filter(style => style.end > style.start),
+        ].filter((style) => style.end > style.start),
         focused: index === selected,
       };
     });
@@ -300,19 +224,29 @@ export class Terminal {
   readingLines(chapters, index, body, heading = '正文', { focus = 'body', selected = index, offset = 0 } = {}) {
     const { sidebar, height, width } = this.readingLayout;
     const title = { text: fitLine(heading, width), styles: [{ start: 0, end: heading.length, type: 'heading' }] };
-    if (!this.showCatalog) return [{ ...title, prefix: '  ' }, ...body.map(line => ({
-      ...line,
-      prefix: line.blockStart && ['image', 'caption', 'table'].includes(line.styles[0]?.type) ? '└ ' : '  ',
-    }))];
+    if (!this.showCatalog)
+      return [
+        { ...title, prefix: '  ' },
+        ...body.map((line) => ({
+          ...line,
+          prefix: line.blockStart && ['image', 'caption', 'table'].includes(line.styles[0]?.type) ? '└ ' : '  ',
+        })),
+      ];
     if (!sidebar) return [title, ...body];
     const start = offset;
     const end = Math.min(chapters.length, start + height);
-    const readingRow = (label, content) => ({ catalog: fitLine(label, sidebar), body: content, focused: focus === 'catalog' });
+    const readingRow = (label, content) => ({
+      catalog: fitLine(label, sidebar),
+      body: content,
+      focused: focus === 'catalog',
+    });
     const lines = [readingRow(`目录 ${start + 1}–${end}/${chapters.length}`, title)];
     for (let row = 0; row < height; row++) {
       const chapter = chapters[start + row];
       const indent = chapter ? '  '.repeat(Math.max(0, Math.min(3, (Number(chapter.level) || 1) - 1))) : '';
-      const label = chapter ? `${start + row === selected ? '▶' : ' '}${start + row === index ? '●' : ' '} ${start + row + 1}. ${indent}${chapter.title}` : '';
+      const label = chapter
+        ? `${start + row === selected ? '▶' : ' '}${start + row === index ? '●' : ' '} ${start + row + 1}. ${indent}${chapter.title}`
+        : '';
       lines.push(readingRow(label, body[row] || ''));
     }
     return lines;
@@ -323,11 +257,12 @@ export class Terminal {
     this.inputHelp = help;
     if (stdout.isTTY) stdout.write('\x1b[0m\x1b[0 q\x1b[2J\x1b[H');
     if (title !== null) stdout.write(`${clean(title)}\n${'─'.repeat(Math.min(this.width, 70))}\n`);
-    const rendered = lines.map(line => {
+    const rendered = lines.map((line) => {
       if (typeof line === 'string' || !Object.hasOwn(line, 'catalog')) {
         const prefix = line.prefix || '';
-        const rendered = (stdout.isTTY && prefix ? `\x1b[90m${prefix}\x1b[39m` : prefix)
-          + renderContent(line, title === null ? taskColors : contentColors);
+        const rendered =
+          (stdout.isTTY && prefix ? `\x1b[90m${prefix}\x1b[39m` : prefix) +
+          renderContent(line, title === null ? taskColors : contentColors);
         return highlight(rendered, line.focused);
       }
       const catalog = clean(line.catalog);
@@ -336,16 +271,24 @@ export class Terminal {
     });
     if (this.inputBar) {
       stdout.write(rendered.join('\n'));
-      const path = projectPath === homedir() ? '~' : projectPath.startsWith(`${homedir()}/`) ? `~${projectPath.slice(homedir().length)}` : projectPath;
+      const path =
+        projectPath === homedir()
+          ? '~'
+          : projectPath.startsWith(`${homedir()}/`)
+            ? `~${projectPath.slice(homedir().length)}`
+            : projectPath;
       const status = `  GPT-6-Astra high · ${path} · weread`;
       const value = fitLine(status, this.width);
       const pathStart = '  GPT-6-Astra high · '.length;
       const pathEnd = Math.min(value.length, pathStart + path.length);
-      const statusLine = { text: value, styles: [
-        { start: 0, end: Math.min(pathStart, value.length), type: 'status' },
-        { start: Math.min(pathStart, value.length), end: pathEnd, type: 'image' },
-        { start: pathEnd, end: value.length, type: 'status' },
-      ] };
+      const statusLine = {
+        text: value,
+        styles: [
+          { start: 0, end: Math.min(pathStart, value.length), type: 'status' },
+          { start: Math.min(pathStart, value.length), end: pathEnd, type: 'image' },
+          { start: pathEnd, end: value.length, type: 'status' },
+        ],
+      };
       const now = new Date();
       const seconds = Math.max(0, Math.floor((now.getTime() - startedAt) / 1000));
       const duration = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -396,7 +339,9 @@ export class Terminal {
       this.rl.write(`${command}\n`);
     };
     if (stdin.isTTY) this.input.on('keypress', onKey);
-    const onInput = () => { if (this.waiting) this.drawInput(); };
+    const onInput = () => {
+      if (this.waiting) this.drawInput();
+    };
     if (stdin.isTTY) this.input.on('keypress', onInput);
     try {
       const answer = await this.rl.question(this.inputBar ? '› ' : '> ', { signal: this.abort.signal });
@@ -423,7 +368,7 @@ export class Terminal {
 
   drawInput() {
     if (!this.inputBar) return;
-    const before = Array.from(segments.segment(clean(this.rl.line.slice(0, this.rl.cursor))));
+    const before = Array.from(graphemes.segment(clean(this.rl.line.slice(0, this.rl.cursor))));
     let visible = '';
     let columns = 0;
     for (const { segment } of before.reverse()) {
@@ -437,12 +382,16 @@ export class Terminal {
     const text = fitLine(`› ${value}`, this.width);
     const input = `\x1b[1;37m${text.slice(0, 2)}${empty ? '\x1b[22;90m' : ''}${text.slice(2)}`;
     const padding = ' '.repeat(this.width);
-    stdout.write(`\x1b[48;2;32;32;32m\x1b[${stdout.rows - 4};1H${padding}\x1b[${stdout.rows - 3};1H${input}\x1b[${stdout.rows - 2};1H${padding}\x1b[0m`);
+    stdout.write(
+      `\x1b[48;2;32;32;32m\x1b[${stdout.rows - 4};1H${padding}\x1b[${stdout.rows - 3};1H${input}\x1b[${stdout.rows - 2};1H${padding}\x1b[0m`,
+    );
     stdout.write(`\x1b[${stdout.rows};1H\x1b[90m${fitLine(empty ? `  ${this.inputHelp}` : '', this.width)}\x1b[39m`);
     stdout.write(`\x1b[3 q\x1b[${stdout.rows - 3};${Math.min(this.width, columns + 3)}H`);
   }
 
-  busy(message) { stdout.write(`${clean(message)}\n`); }
+  busy(message) {
+    stdout.write(`${clean(message)}\n`);
+  }
 
   refresh() {
     if (this.waiting && this.redraw) {

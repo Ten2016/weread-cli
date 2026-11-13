@@ -7,7 +7,7 @@ import { loadReadingTimes } from './progress.js';
 const session = new Session();
 const books = new Books(session);
 const terminal = new Terminal();
-const loginLabel = () => session.authenticated ? '已登录' : '未登录';
+const loginLabel = () => (session.authenticated ? '已登录' : '未登录');
 const stop = () => {
   terminal.close();
   if (!books.current) void session.close().catch(() => {});
@@ -25,7 +25,14 @@ async function list(kind, keyword = '') {
   let readingTimes = {};
   let message = '';
   let fromCache = kind === 'cache';
-  const title = kind === 'cache' ? '本地缓存' : kind === 'shelf' ? '我的书架' : kind === 'recommend' ? '猜你喜欢' : `搜索：${keyword}`;
+  const title =
+    kind === 'cache'
+      ? '本地缓存'
+      : kind === 'shelf'
+        ? '我的书架'
+        : kind === 'recommend'
+          ? '猜你喜欢'
+          : `搜索：${keyword}`;
 
   async function updateReadingTimes() {
     try {
@@ -41,7 +48,7 @@ async function list(kind, keyword = '') {
     if (kind === 'search') {
       const result = await books.search(keyword, reset ? undefined : cursor);
       const all = reset ? result.books : [...items, ...result.books];
-      items = [...new Map(all.map(book => [book.id, book])).values()];
+      items = [...new Map(all.map((book) => [book.id, book])).values()];
       cursor = result.cursor;
       hasMore = result.hasMore;
     } else if (kind === 'cache') items = await books.cached();
@@ -67,9 +74,12 @@ async function list(kind, keyword = '') {
     selected = Math.max(0, Math.min(selected, items.length - 1));
     offset = Math.max(0, Math.min(offset, selected));
     if (selected >= offset + size) offset = selected - size + 1;
-    terminal.screen(`${title} · ${loginLabel()} · ${fromCache ? '使用缓存' : '未使用缓存'}`,
+    terminal.screen(
+      `${title} · ${loginLabel()} · ${fromCache ? '使用缓存' : '未使用缓存'}`,
       terminal.bookLines(items, selected, offset, readingTimes),
-      '↑/↓ 选择 · ←/→ 翻页 · 回车 阅读 · a 加书架 · r 刷新 · Esc 返回 · q 退出', message);
+      '↑/↓ 选择 · ←/→ 翻页 · 回车 阅读 · a 加书架 · r 刷新 · Esc 返回 · q 退出',
+      message,
+    );
   }
 
   async function navigate(key) {
@@ -93,7 +103,7 @@ async function list(kind, keyword = '') {
   await load(true);
   while (terminal.running) {
     const command = await terminal.ask(render, {
-      onArrow: key => ({ up: '↑', down: '↓', left: '←', right: '→' })[key],
+      onArrow: (key) => ({ up: '↑', down: '↓', left: '←', right: '→' })[key],
     });
     if (command === 'q' || command === '\x1b') return;
     message = '';
@@ -127,9 +137,14 @@ let message = '默认后台运行，选择列表后自动使用本地登录态�
 void session.initialize().then(() => terminal.refresh());
 try {
   while (terminal.running) {
-    const command = await terminal.ask(() => terminal.screen(`微信读书 · ${loginLabel()}`, [
-      '1. 我的书架', '2. 猜你喜欢', '3. 搜索书籍', '4. 本地缓存',
-    ], '1/2/3/4 进入 · login 手动扫码登录 · logout 退出登录 · q 退出程序', message));
+    const command = await terminal.ask(() =>
+      terminal.screen(
+        `微信读书 · ${loginLabel()}`,
+        ['1. 我的书架', '2. 猜你喜欢', '3. 搜索书籍', '4. 本地缓存'],
+        '1/2/3/4 进入 · login 手动扫码登录 · logout 退出登录 · q 退出程序',
+        message,
+      ),
+    );
     if (command === 'q') break;
     if (command === '\x1b') continue;
     message = '';
@@ -157,5 +172,9 @@ try {
   process.off('SIGINT', stop);
   process.off('SIGTERM', stop);
   terminal.close();
-  try { await session.close(); } catch { console.error('登录态保存或浏览器关闭失败，请检查本地文件权限。'); }
+  try {
+    await session.close();
+  } catch {
+    console.error('登录态保存或浏览器关闭失败，请检查本地文件权限。');
+  }
 }

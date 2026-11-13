@@ -62,7 +62,9 @@ export class Session {
     try {
       state = JSON.parse(await readFile(AUTH, 'utf8'));
     } catch (error) {
-      throw new Error(error.code === 'ENOENT' ? '尚未登录，请在主菜单输入 login。' : '登录态文件无法读取，请主动重新登录。');
+      throw new Error(
+        error.code === 'ENOENT' ? '尚未登录，请在主菜单输入 login。' : '登录态文件无法读取，请主动重新登录。',
+      );
     }
     this.client = await request.newContext({ storageState: state, timeout: 5000 });
     await this.checkLogin({ timeout: 5000 });
@@ -76,7 +78,10 @@ export class Session {
   }
 
   async json(path, options = {}) {
-    const response = await (this.context?.request || this.client).fetch(`${BASE}${path}`, { timeout: 20000, ...options });
+    const response = await (this.context?.request || this.client).fetch(`${BASE}${path}`, {
+      timeout: 20000,
+      ...options,
+    });
     try {
       if ([401, 403].includes(response.status())) {
         this.authenticated = false;
@@ -84,7 +89,11 @@ export class Session {
       }
       if (!response.ok()) throw new Error(`请求失败（HTTP ${response.status()}），请稍后重试。`);
       let data;
-      try { data = await response.json(); } catch { throw new Error('网页返回了非 JSON 数据，请检查网络或重新登录。'); }
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error('网页返回了非 JSON 数据，请检查网络或重新登录。');
+      }
       const code = data.errcode ?? data.errCode;
       if ([-2010, -2012, -2013].includes(Number(code))) {
         this.authenticated = false;
@@ -100,7 +109,10 @@ export class Session {
   }
 
   async shelfState(options = {}) {
-    const response = await (this.context?.request || this.client).get(`${BASE}/web/shelf`, { timeout: 20000, ...options });
+    const response = await (this.context?.request || this.client).get(`${BASE}/web/shelf`, {
+      timeout: 20000,
+      ...options,
+    });
     try {
       if ([401, 403].includes(response.status())) this.authenticated = false;
       if (!response.ok()) throw new Error(`书架加载失败（HTTP ${response.status()}）。`);
@@ -150,7 +162,8 @@ export class Session {
       while (true) {
         if (page.isClosed()) throw new Error('登录窗口已关闭。');
         const remaining = deadline - Date.now();
-        if (remaining <= 0) throw new Error(`三分钟内未确认登录，可重新输入 login。最后一次校验：${lastError?.message || '未登录'}`);
+        if (remaining <= 0)
+          throw new Error(`三分钟内未确认登录，可重新输入 login。最后一次校验：${lastError?.message || '未登录'}`);
         try {
           await this.checkLogin({ timeout: Math.min(5000, remaining) });
           break;
@@ -198,7 +211,11 @@ export class Session {
       this.client = null;
       this.authenticated = false;
       this.userId = '';
-      try { await browser?.close(); } finally { await client?.dispose(); }
+      try {
+        await browser?.close();
+      } finally {
+        await client?.dispose();
+      }
     }
   }
 }

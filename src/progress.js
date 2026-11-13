@@ -34,8 +34,13 @@ export async function loadReadingTimes(userId) {
 export async function saveProgress(userId, bookId, bookmark) {
   if (!userId || !bookmark) return;
   const all = await readAll();
-  all[userId] = { ...all[userId], [bookId]: {
-    chapterUid: bookmark.chapterUid, position: bookmark.position, updatedAt: Date.now(),
-  } };
+  all[userId] = {
+    ...all[userId],
+    [bookId]: {
+      chapterUid: bookmark.chapterUid,
+      position: bookmark.position,
+      updatedAt: Date.now(),
+    },
+  };
   await writeJson(FILE, all);
 }

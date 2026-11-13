@@ -5,14 +5,41 @@
   "license": "MIT",
   "type": "module",
   "description": "微信读书终端阅读器（WeRead Terminal Reader / TUI）：Codex CLI 风格的摸鱼读书神器，支持扫码登录、键盘翻页、离线缓存与续读。",
-  "keywords": ["weread", "wechat-reading", "terminal-reader", "tui", "cli", "ebook-reader", "reading", "nodejs", "微信读书", "终端阅读器", "摸鱼"],
-  "repository": { "type": "git", "url": "https://github.com/Ten2016/weread-cli.git" },
+  "keywords": [
+    "weread",
+    "wechat-reading",
+    "terminal-reader",
+    "tui",
+    "cli",
+    "ebook-reader",
+    "reading",
+    "nodejs",
+    "微信读书",
+    "终端阅读器",
+    "摸鱼"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ten2016/weread-cli.git"
+  },
   "homepage": "https://github.com/Ten2016/weread-cli#readme",
-  "bugs": { "url": "https://github.com/Ten2016/weread-cli/issues" },
-  "engines": { "node": ">=20" },
-  "scripts": { "start": "node src/cli.js", "check": "node --check src/cli.js && node --check src/reader.js && node --check src/session.js && node --check src/books.js && node --check src/capture.js && node --check src/terminal.js && node --check src/progress.js && node --check src/cache.js && node --check src/storage.js" },
+  "bugs": {
+    "url": "https://github.com/Ten2016/weread-cli/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "format": "prettier --write \"src/**/*.js\" \"*.json\" .prettierrc.json \".github/**/*.yml\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"*.json\" .prettierrc.json \".github/**/*.yml\"",
+    "check": "npm run format:check && node --check src/cli.js && node --check src/reader.js && node --check src/session.js && node --check src/books.js && node --check src/capture.js && node --check src/terminal.js && node --check src/content.js && node --check src/progress.js && node --check src/cache.js && node --check src/storage.js"
+  },
   "dependencies": {
     "playwright-core": "1.65.0",
     "string-width": "8.3.0"
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
   }
 }

@@ -1,9 +1,12 @@
-import { wrapLines, readingContent } from './terminal.js';
+import { wrapLines, readingContent } from './content.js';
 import { saveProgress } from './progress.js';
 
 function readingTitle(reading, authenticated) {
   const percent = reading.cloud?.progress;
-  const progress = typeof percent === 'number' && Number.isFinite(percent) && percent >= 0 && percent <= 100 ? `${percent}%` : '进度未知';
+  const progress =
+    typeof percent === 'number' && Number.isFinite(percent) && percent >= 0 && percent <= 100
+      ? `${percent}%`
+      : '进度未知';
   return `《${reading.book.title}》 · ${progress} · ${authenticated ? '已登录' : '未登录'} · ${reading.fromCache ? '使用缓存' : '未使用缓存'}`;
 }
 
@@ -26,9 +29,9 @@ export async function readBook(book, books, terminal) {
   const updateContent = () => {
     lines = [];
     content = readingContent(reading.blocks);
-    content.text ||= (reading.message
+    content.text ||= reading.message
       ? '[本章正文未加载，可继续翻页或切换到目录选择章节。]'
-      : '[网页已返回本目录项，但没有可提取文字，可能为图片扉页。可继续翻页。]');
+      : '[网页已返回本目录项，但没有可提取文字，可能为图片扉页。可继续翻页。]';
   };
   updateContent();
 
@@ -65,14 +68,21 @@ export async function readBook(book, books, terminal) {
     catalogOffset = Math.max(0, Math.min(catalogOffset, selectedChapter, reading.chapters.length - layout.height));
     if (selectedChapter >= catalogOffset + layout.height) catalogOffset = selectedChapter - layout.height + 1;
     if (!lines.length || wrappedWidth !== layout.width) {
-      lines = wrapLines(content.text, layout.width, content.styles, content.starts);
+      lines = wrapLines(content, layout.width);
       wrappedWidth = layout.width;
     }
     const lastLine = Math.max(0, lines.length - layout.height);
-    lineIndex = Math.max(0, Math.min(lastLine, lines.findLastIndex(line => line.start <= position)));
+    lineIndex = Math.max(
+      0,
+      Math.min(
+        lastLine,
+        lines.findLastIndex((line) => line.start <= position),
+      ),
+    );
     if (!Number.isFinite(position)) position = lines[lineIndex].start;
     const chapter = reading.chapters[reading.index];
-    if (chapter && reading.blocks.length && !reading.message) bookmark = { chapterUid: chapter.uid, position: lines[lineIndex].start };
+    if (chapter && reading.blocks.length && !reading.message)
+      bookmark = { chapterUid: chapter.uid, position: lines[lineIndex].start };
     const title = chapter?.title || '正文';
     const heading = terminal.showCatalog
       ? `${title} · ${reading.index + 1}/${reading.chapters.length} 章 · ${lineIndex + 1}–${Math.min(lines.length, lineIndex + layout.height)}/${lines.length} 行`
@@ -84,10 +94,19 @@ export async function readBook(book, books, terminal) {
         : '←/→ 翻页 · ↑/↓ 滚动';
       help = `${navigation} · h 隐藏目录 · r 刷新本章 · a 加书架 · Esc 返回 · q 退出`;
     } else if (showHelp) help = '←/→ 翻页 ↑/↓ 滚动 h 目录 r 刷新本章 a 书架 Esc 返回 q 退出';
-    terminal.screen(terminal.showCatalog ? readingTitle(reading, books.session.authenticated) : null,
-      terminal.readingLines(reading.chapters, reading.index, lines.slice(lineIndex, lineIndex + layout.height),
-        heading, { focus, selected: selectedChapter, offset: catalogOffset }),
-      help, message || reading.warning || '', { startedAt });
+    terminal.screen(
+      terminal.showCatalog ? readingTitle(reading, books.session.authenticated) : null,
+      terminal.readingLines(
+        reading.chapters,
+        reading.index,
+        lines.slice(lineIndex, lineIndex + layout.height),
+        heading,
+        { focus, selected: selectedChapter, offset: catalogOffset },
+      ),
+      help,
+      message || reading.warning || '',
+      { startedAt },
+    );
   }
 
   function onArrow(key) {
@@ -131,7 +150,8 @@ export async function readBook(book, books, terminal) {
           const direction = command === '↑' ? -1 : 1;
           if (!moveBody(direction * terminal.readingLayout.height)) {
             const next = reading.index + direction;
-            if (next < 0 || next >= reading.chapters.length) message = direction > 0 ? '已到全书末尾。' : '已到全书开头。';
+            if (next < 0 || next >= reading.chapters.length)
+              message = direction > 0 ? '已到全书末尾。' : '已到全书开头。';
             else {
               await changeChapter(next, direction > 0 ? 0 : Infinity);
             }

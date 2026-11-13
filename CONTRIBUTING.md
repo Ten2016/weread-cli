@@ -19,19 +19,20 @@ npm ci --ignore-scripts
 npm start
 ```
 
-源码统一位于 `src/`，直接运行，无需构建。`cli.js` 负责菜单与列表，`reader.js` 负责阅读交互，`terminal.js` 负责终端排版与输入，`books.js` 负责章节导航，`capture.js` 负责正文提取；`session.js`、`cache.js`、`progress.js` 分别管理登录态、缓存和续读，文件写入复用 `storage.js`。
+源码统一位于 `src/`，直接运行，无需构建。`cli.js` 负责菜单与列表，`reader.js` 负责阅读交互，`terminal.js` 负责界面绘制与输入，`content.js` 负责正文排版与着色，`books.js` 负责章节导航，`capture.js` 负责正文提取；`session.js`、`cache.js`、`progress.js` 分别管理登录态、缓存和续读，文件写入复用 `storage.js`。
 
 根目录保留包配置和公开文档，CI 配置位于 `.github/workflows/`；运行数据仍保存在根目录的 `.data/`，不随源码移动。
 
-沿用 ES Modules、两空格缩进、单引号和分号，并遵循 `.editorconfig`。改动依赖时同步锁文件，避免无关重构和批量格式化。
+沿用 ES Modules、两空格缩进、单引号和分号，使用 Prettier 统一格式；配置见 `.editorconfig` 和 `.prettierrc.json`。改动依赖时同步锁文件，避免无关重构。
 
 ## 检查改动
 
 ```bash
+npm run format
 npm run check
 ```
 
-该命令与 CI 一样执行 JavaScript 语法检查。目前没有自动化功能测试，请按改动范围人工验证：交互改动检查列表导航、目录与隐藏两种模式、输入和窗口缩放；章节或存储改动检查切章、缓存命中与重新打开后的续读。
+`format` 格式化源码和配置，`check` 与 CI 一样检查格式和 JavaScript 语法；只检查格式可运行 `npm run format:check`。目前没有自动化功能测试，请按改动范围人工验证：交互改动检查列表导航、目录与隐藏两种模式、输入和窗口缩放；章节或存储改动检查切章、缓存命中与重新打开后的续读。
 
 在 PR 中说明验证步骤、结果及未验证的场景。界面变化可附脱敏截图。
 
