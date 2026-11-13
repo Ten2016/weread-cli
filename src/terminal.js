@@ -380,7 +380,7 @@ export class Terminal {
     const empty = !this.rl.line;
     const value = empty ? 'Ask Codex to do anything' : `${visible}${this.rl.line.slice(this.rl.cursor)}`;
     const text = fitLine(`› ${value}`, this.width);
-    const input = `\x1b[1;37m${text.slice(0, 2)}${empty ? '\x1b[22;90m' : ''}${text.slice(2)}`;
+    const input = `\x1b[1;37m${text.slice(0, 2)}\x1b[22;${empty ? 90 : 39}m${text.slice(2)}`;
     const padding = ' '.repeat(this.width);
     stdout.write(
       `\x1b[48;2;32;32;32m\x1b[${stdout.rows - 4};1H${padding}\x1b[${stdout.rows - 3};1H${input}\x1b[${stdout.rows - 2};1H${padding}\x1b[0m`,
