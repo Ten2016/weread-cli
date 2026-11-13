@@ -116,23 +116,35 @@ export function wrapLines(text, width, styles = [], starts = []) {
   let line = '';
   let columns = 0;
   let start = 0;
-  for (const { segment, index } of segments.segment(text)) {
-    if (segment === '\n') {
+  for (const { segment: sentence, index: sentenceStart } of sentences.segment(text)) {
+    const sentenceText = sentence.trimEnd();
+    const sentenceWidth = stringWidth(sentenceText);
+    if (line && columns + sentenceWidth > width) {
       lines.push({ text: line, start });
       line = '';
       columns = 0;
-      start = index + segment.length;
-      continue;
+      start = sentenceStart;
     }
-    const size = stringWidth(segment);
-    if (columns + size > width && line) {
-      lines.push({ text: line, start });
-      line = '';
-      columns = 0;
-      start = index;
+    for (const { segment, index: offset } of segments.segment(sentence)) {
+      const index = sentenceStart + offset;
+      if (segment === '\n') {
+        lines.push({ text: line, start });
+        line = '';
+        columns = 0;
+        start = index + segment.length;
+        continue;
+      }
+      const size = stringWidth(segment);
+      if (columns + size > width && offset >= sentenceText.length) continue;
+      if (columns + size > width && line) {
+        lines.push({ text: line, start });
+        line = '';
+        columns = 0;
+        start = index;
+      }
+      line += segment;
+      columns += size;
     }
-    line += segment;
-    columns += size;
   }
   if (line || !lines.length) lines.push({ text: line, start });
   let styleIndex = 0;
