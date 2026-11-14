@@ -31,8 +31,6 @@ WeRead CLI 是非官方微信读书（WeRead / WeChat Reading）终端阅读器�
 
 </details>
 
-图片基于实际截图经 AI 脱敏处理，已移除标题栏中的本机路径及透出的后台内容。
-
 ## 快速开始
 
 需要 **Node.js 20+**、**Google Chrome** 和微信读书账号。主要在 macOS 上使用，其他平台尚未系统验证。
