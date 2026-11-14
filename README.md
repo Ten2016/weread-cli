@@ -8,6 +8,31 @@ WeRead CLI 是非官方微信读书（WeRead / WeChat Reading）终端阅读器�
 
 支持键盘翻页、鼠标滚动、章节导航、离线缓存与阅读位置续读。
 
+## 界面预览
+
+按 `h` 收起目录，切换到 Codex CLI 风格的阅读界面。
+
+![Codex CLI 风格的隐藏阅读模式](docs/images/reading.png)
+
+<details>
+<summary>查看主菜单、章节导航与书架</summary>
+
+从主菜单进入书架、推荐、搜索或本地缓存。
+
+![主菜单与四个功能入口](docs/images/menu.png)
+
+左右切换目录与正文焦点，上下选章，回车打开。
+
+![目录导航与正文阅读](docs/images/catalog.png)
+
+书架显示阅读进度与上次阅读时间，上下选书、回车阅读。
+
+![彩色书架与阅读进度](docs/images/bookshelf.png)
+
+</details>
+
+图片基于实际截图经 AI 脱敏处理，已移除标题栏中的本机路径及透出的后台内容。
+
 ## 快速开始
 
 需要 **Node.js 20+**、**Google Chrome** 和微信读书账号。主要在 macOS 上使用，其他平台尚未系统验证。

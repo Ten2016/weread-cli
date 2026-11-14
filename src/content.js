@@ -97,7 +97,8 @@ export function wrapLines({ text, styles = [], starts = [], sentenceRanges = [] 
     nextSentenceColor = null;
     if (!type && lineStarts.has(sentence.start)) {
       if (sentence.color === undefined) {
-        sentence.color = Math.random() < 0.1 ? sentenceColors[Math.floor(Math.random() * sentenceColors.length)] : null;
+        sentence.color =
+          Math.random() < 0.12 ? sentenceColors[Math.floor(Math.random() * sentenceColors.length)] : null;
       }
       type = sentence.color;
       nextSentenceColor = type;
